@@ -1,0 +1,301 @@
+{
+    "designSystem": {
+      "name": "Modern SaaS Design System",
+      "version": "1.0.0",
+      "description": "A vibrant, gradient-heavy design system with playful elements and strong visual hierarchy",
+      
+      "colors": {
+        "primary": {
+          "purple": "#7B68EE",
+          "purpleLight": "#9B8AFF",
+          "purpleDark": "#6B5DD3"
+        },
+        "secondary": {
+          "pink": "#FF6B9D",
+          "pinkLight": "#FF88B0",
+          "blue": "#4ECDC4",
+          "blueLight": "#71D9D4"
+        },
+        "gradients": {
+          "primary": "linear-gradient(135deg, #667EEA 0%, #764BA2 100%)",
+          "vibrant": "linear-gradient(135deg, #667EEA 0%, #F093FB 100%)",
+          "blueGradient": "linear-gradient(135deg, #4ECDC4 0%, #44A3AA 100%)",
+          "pinkGradient": "linear-gradient(135deg, #FF6B9D 0%, #C44569 100%)"
+        },
+        "neutral": {
+          "dark": "#1A1A2E",
+          "darkGray": "#2C2F45",
+          "gray": "#6C7293",
+          "lightGray": "#E5E5EA",
+          "white": "#FFFFFF"
+        },
+        "semantic": {
+          "success": "#28A745",
+          "warning": "#FFC107",
+          "error": "#DC3545",
+          "info": "#17A2B8"
+        }
+      },
+      
+      "typography": {
+        "fontFamilies": {
+          "primary": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          "display": "Inter, sans-serif"
+        },
+        "fontSizes": {
+          "xs": "12px",
+          "sm": "14px",
+          "base": "16px",
+          "lg": "18px",
+          "xl": "20px",
+          "2xl": "24px",
+          "3xl": "30px",
+          "4xl": "36px",
+          "5xl": "48px",
+          "6xl": "64px"
+        },
+        "fontWeights": {
+          "normal": 400,
+          "medium": 500,
+          "semibold": 600,
+          "bold": 700,
+          "extrabold": 800
+        },
+        "lineHeights": {
+          "tight": 1.2,
+          "normal": 1.5,
+          "relaxed": 1.75
+        }
+      },
+      
+      "spacing": {
+        "unit": 8,
+        "scale": {
+          "xs": "4px",
+          "sm": "8px",
+          "md": "16px",
+          "lg": "24px",
+          "xl": "32px",
+          "2xl": "48px",
+          "3xl": "64px",
+          "4xl": "96px",
+          "5xl": "128px"
+        }
+      },
+      
+      "borderRadius": {
+        "none": "0px",
+        "sm": "4px",
+        "md": "8px",
+        "lg": "12px",
+        "xl": "16px",
+        "2xl": "24px",
+        "full": "9999px"
+      },
+      
+      "shadows": {
+        "sm": "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+        "default": "0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)",
+        "md": "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+        "lg": "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+        "xl": "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+        "2xl": "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+        "inner": "inset 0 2px 4px 0 rgba(0, 0, 0, 0.06)"
+      },
+      
+      "components": {
+        "button": {
+          "variants": {
+            "primary": {
+              "background": "gradient",
+              "color": "white",
+              "borderRadius": "full",
+              "padding": "12px 32px",
+              "fontSize": "16px",
+              "fontWeight": "semibold",
+              "boxShadow": "lg",
+              "hoverEffect": "scale(1.05)"
+            },
+            "secondary": {
+              "background": "white",
+              "color": "primary",
+              "border": "2px solid currentColor",
+              "borderRadius": "full",
+              "padding": "10px 24px"
+            },
+            "ghost": {
+              "background": "transparent",
+              "color": "gray",
+              "padding": "8px 16px",
+              "hoverBackground": "rgba(0,0,0,0.05)"
+            }
+          }
+        },
+        
+        "card": {
+          "variants": {
+            "default": {
+              "background": "white",
+              "borderRadius": "xl",
+              "padding": "24px",
+              "boxShadow": "md"
+            },
+            "feature": {
+              "background": "gradient",
+              "borderRadius": "2xl",
+              "padding": "32px",
+              "color": "white",
+              "minHeight": "300px"
+            },
+            "pricing": {
+              "background": "white",
+              "borderRadius": "2xl",
+              "padding": "32px",
+              "boxShadow": "xl",
+              "border": "2px solid transparent",
+              "hoverBorder": "2px solid primary"
+            }
+          }
+        },
+        
+        "navigation": {
+          "style": {
+            "background": "white",
+            "borderBottom": "1px solid lightGray",
+            "padding": "16px 0",
+            "position": "sticky",
+            "top": 0,
+            "zIndex": 100
+          },
+          "logo": {
+            "height": "32px",
+            "display": "flex",
+            "alignItems": "center",
+            "gap": "8px"
+          },
+          "menu": {
+            "display": "flex",
+            "gap": "32px",
+            "alignItems": "center"
+          },
+          "menuItem": {
+            "color": "gray",
+            "fontWeight": "medium",
+            "hoverColor": "primary"
+          }
+        },
+        
+        "hero": {
+          "layout": {
+            "textAlign": "center",
+            "maxWidth": "800px",
+            "margin": "0 auto",
+            "padding": "80px 20px"
+          },
+          "headline": {
+            "fontSize": "5xl",
+            "fontWeight": "extrabold",
+            "lineHeight": "tight",
+            "marginBottom": "24px"
+          },
+          "subheadline": {
+            "fontSize": "xl",
+            "color": "gray",
+            "marginBottom": "40px"
+          }
+        },
+        
+        "feature": {
+          "grid": {
+            "display": "grid",
+            "gridTemplateColumns": "repeat(auto-fit, minmax(300px, 1fr))",
+            "gap": "24px"
+          },
+          "icon": {
+            "size": "48px",
+            "marginBottom": "16px"
+          },
+          "title": {
+            "fontSize": "2xl",
+            "fontWeight": "bold",
+            "marginBottom": "12px"
+          },
+          "description": {
+            "fontSize": "base",
+            "color": "gray",
+            "lineHeight": "relaxed"
+          }
+        }
+      },
+      
+      "layout": {
+        "container": {
+          "maxWidth": "1280px",
+          "margin": "0 auto",
+          "padding": "0 20px"
+        },
+        "section": {
+          "padding": "80px 0"
+        },
+        "grid": {
+          "columns": {
+            "sm": 1,
+            "md": 2,
+            "lg": 3,
+            "xl": 4
+          },
+          "gap": "24px"
+        }
+      },
+      
+      "animations": {
+        "duration": {
+          "fast": "150ms",
+          "normal": "300ms",
+          "slow": "500ms"
+        },
+        "easing": {
+          "default": "cubic-bezier(0.4, 0, 0.2, 1)",
+          "easeIn": "cubic-bezier(0.4, 0, 1, 1)",
+          "easeOut": "cubic-bezier(0, 0, 0.2, 1)",
+          "easeInOut": "cubic-bezier(0.4, 0, 0.2, 1)"
+        },
+        "hover": {
+          "scale": "scale(1.05)",
+          "translateY": "translateY(-2px)",
+          "shadow": "0 12px 20px -5px rgba(0, 0, 0, 0.15)"
+        }
+      },
+      
+      "patterns": {
+        "gradientOverlays": true,
+        "roundedCorners": "heavy",
+        "whiteSpace": "generous",
+        "colorUsage": "vibrant",
+        "shadowUsage": "moderate",
+        "illustrationStyle": "flat-modern",
+        "iconStyle": "outlined",
+        "backgroundPatterns": "gradient-mesh"
+      },
+      
+      "responsive": {
+        "breakpoints": {
+          "sm": "640px",
+          "md": "768px",
+          "lg": "1024px",
+          "xl": "1280px",
+          "2xl": "1536px"
+        },
+        "containerPadding": {
+          "mobile": "16px",
+          "tablet": "24px",
+          "desktop": "32px"
+        },
+        "typographyScale": {
+          "mobile": 0.875,
+          "tablet": 0.95,
+          "desktop": 1
+        }
+      }
+    }
+  } 
