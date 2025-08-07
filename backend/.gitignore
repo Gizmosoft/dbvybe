@@ -23,4 +23,9 @@
 hs_err_pid*
 replay_pid*
 
-*.properties
+# properties file
+application.properties
+
+# unwanted folder
+target/
+logs/
