@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: dbvybe-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: dbvybe
+      MYSQL_USER: dbvybe_user
+      MYSQL_PASSWORD: dbvybe
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - dbvybe-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+networks:
+  dbvybe-network:
+    driver: bridge
+
+volumes:
+  mysql_data:

@@ -37,6 +37,27 @@ public class DatabaseConnectionResponse {
     public DatabaseConnectionRequest getRequest() { return request; }
     public void setRequest(DatabaseConnectionRequest request) { this.request = request; }
     
+    /**
+     * Check if the response indicates success
+     */
+    public boolean isSuccess() {
+        return "SUCCESS".equals(status);
+    }
+    
+    /**
+     * Create a failure response
+     */
+    public static DatabaseConnectionResponse failure(String message) {
+        return new DatabaseConnectionResponse(null, "FAILED", message);
+    }
+    
+    /**
+     * Create a success response
+     */
+    public static DatabaseConnectionResponse success(String connectionId, String message) {
+        return new DatabaseConnectionResponse(connectionId, "SUCCESS", message);
+    }
+    
     @Override
     public String toString() {
         return "DatabaseConnectionResponse{" +

@@ -1,105 +1,105 @@
 package com.dbVybe.app.cluster;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import akka.actor.typed.ActorRef;
+import akka.actor.typed.Scheduler;
+import com.dbVybe.app.actor.security.SecurityActor;
+import com.dbVybe.app.actor.session.UserSessionManager;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 
 /**
- * Cluster Manager to coordinate all three cluster nodes
+ * Spring component responsible for managing the Akka cluster nodes
  */
 @Component
 public class ClusterManager {
     
-    private static final Logger logger = LoggerFactory.getLogger(ClusterManager.class);
+    private DatabaseExplorationSystem coreServicesNode;
+    private LLMProcessingSystem llmProcessingNode;
+    private DataAnalysisSystem dataAnalysisNode;
     
-    private DatabaseExplorationSystem databaseExplorationSystem;
-    private LLMProcessingSystem llmProcessingSystem;
-    private DataAnalysisSystem dataAnalysisSystem;
+    @Autowired
+    public ClusterManager() {
+        // Constructor
+    }
     
     @PostConstruct
-    public void startCluster() {
-        logger.info("Starting Akka Cluster with 3 nodes...");
+    public void start() {
+        System.out.println("Starting Akka Cluster nodes...");
         
-        try {
-            // Start Node 1: Core Services Node
-            databaseExplorationSystem = new DatabaseExplorationSystem();
-            databaseExplorationSystem.start();
-            logger.info("Node 1 (DatabaseExplorationSystem) started successfully");
-            
-            // Start Node 2: LLM Processing Node
-            llmProcessingSystem = new LLMProcessingSystem();
-            llmProcessingSystem.start();
-            logger.info("Node 2 (LLMProcessingSystem) started successfully");
-            
-            // Start Node 3: Data Analysis Node
-            dataAnalysisSystem = new DataAnalysisSystem();
-            dataAnalysisSystem.start();
-            logger.info("Node 3 (DataAnalysisSystem) started successfully");
-            
-            logger.info("All cluster nodes started successfully");
-            
-        } catch (Exception e) {
-            logger.error("Failed to start cluster nodes", e);
-            throw new RuntimeException("Cluster startup failed", e);
-        }
+        // Start Core Services Node (Node 1)
+        coreServicesNode = new DatabaseExplorationSystem();
+        coreServicesNode.start();
+        
+        // Start LLM Processing Node (Node 2)
+        llmProcessingNode = new LLMProcessingSystem();
+        llmProcessingNode.start();
+        
+        // Start Data Analysis Node (Node 3)
+        dataAnalysisNode = new DataAnalysisSystem();
+        dataAnalysisNode.start();
+        
+        System.out.println("All Akka Cluster nodes started successfully!");
     }
     
     @PreDestroy
-    public void stopCluster() {
-        logger.info("Stopping Akka Cluster...");
+    public void stop() {
+        System.out.println("Stopping Akka Cluster nodes...");
         
-        try {
-            if (dataAnalysisSystem != null) {
-                dataAnalysisSystem.stop();
-                logger.info("Node 3 (DataAnalysisSystem) stopped");
-            }
-            
-            if (llmProcessingSystem != null) {
-                llmProcessingSystem.stop();
-                logger.info("Node 2 (LLMProcessingSystem) stopped");
-            }
-            
-            if (databaseExplorationSystem != null) {
-                databaseExplorationSystem.stop();
-                logger.info("Node 1 (DatabaseExplorationSystem) stopped");
-            }
-            
-            logger.info("All cluster nodes stopped successfully");
-            
-        } catch (Exception e) {
-            logger.error("Error stopping cluster nodes", e);
+        if (coreServicesNode != null) {
+            coreServicesNode.stop();
         }
+        
+        if (llmProcessingNode != null) {
+            llmProcessingNode.stop();
+        }
+        
+        if (dataAnalysisNode != null) {
+            dataAnalysisNode.stop();
+        }
+        
+        System.out.println("All Akka Cluster nodes stopped successfully!");
     }
     
     /**
-     * Get the Database Exploration System
+     * Get SecurityActor from Core Services Node
      */
-    public DatabaseExplorationSystem getDatabaseExplorationSystem() {
-        return databaseExplorationSystem;
+    public ActorRef<SecurityActor.Command> getSecurityActor() {
+        if (coreServicesNode != null) {
+            return coreServicesNode.getSecurityActor();
+        }
+        throw new IllegalStateException("Core Services Node not started");
     }
     
     /**
-     * Get the LLM Processing System
+     * Get UserSessionManager from Core Services Node
      */
-    public LLMProcessingSystem getLLMProcessingSystem() {
-        return llmProcessingSystem;
+    public ActorRef<UserSessionManager.Command> getUserSessionManager() {
+        if (coreServicesNode != null) {
+            return coreServicesNode.getUserSessionManager();
+        }
+        throw new IllegalStateException("Core Services Node not started");
     }
     
     /**
-     * Get the Data Analysis System
+     * Get DatabaseCommunicationManager from Core Services Node
      */
-    public DataAnalysisSystem getDataAnalysisSystem() {
-        return dataAnalysisSystem;
+    public ActorRef<com.dbVybe.app.actor.database.DatabaseCommunicationManager.Command> getDatabaseCommunicationManager() {
+        if (coreServicesNode != null) {
+            return coreServicesNode.getDatabaseCommunicationManager();
+        }
+        throw new IllegalStateException("Core Services Node not started");
     }
     
     /**
-     * Check if all nodes are running
+     * Get Akka Scheduler for AskPattern operations
      */
-    public boolean isClusterHealthy() {
-        return databaseExplorationSystem != null && 
-               llmProcessingSystem != null && 
-               dataAnalysisSystem != null;
+    public Scheduler getScheduler() {
+        if (coreServicesNode != null) {
+            return coreServicesNode.getScheduler();
+        }
+        throw new IllegalStateException("Core Services Node not started");
     }
 } 
