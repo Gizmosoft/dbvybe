@@ -28,6 +28,8 @@
 	</scm>
 	<properties>
 		<java.version>17</java.version>
+		<scala.binary.version>2.13</scala.binary.version>
+		<akka.version>2.6.21</akka.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -35,10 +37,176 @@
 			<artifactId>spring-boot-starter-web</artifactId>
 		</dependency>
 
+		<!-- Akka Typed core -->
+		<dependency>
+			<groupId>com.typesafe.akka</groupId>
+			<artifactId>akka-actor-typed_${scala.binary.version}</artifactId>
+			<version>${akka.version}</version>
+		</dependency>
+
+		<!-- Akka Actor -->
+		<dependency>
+			<groupId>com.typesafe.akka</groupId>
+			<artifactId>akka-actor_${scala.binary.version}</artifactId>
+			<version>${akka.version}</version>
+		</dependency>
+
+		<!-- Akka Cluster -->
+		<dependency>
+			<groupId>com.typesafe.akka</groupId>
+			<artifactId>akka-cluster-typed_${scala.binary.version}</artifactId>
+			<version>${akka.version}</version>
+		</dependency>
+
+		<!-- Akka Cluster -->
+		<dependency>
+			<groupId>com.typesafe.akka</groupId>
+			<artifactId>akka-cluster_${scala.binary.version}</artifactId>
+			<version>${akka.version}</version>
+		</dependency>
+
+		<!-- Akka Cluster Tools -->
+		<dependency>
+			<groupId>com.typesafe.akka</groupId>
+			<artifactId>akka-cluster-tools_${scala.binary.version}</artifactId>
+			<version>${akka.version}</version>
+		</dependency>
+
+		<!-- Akka Remote -->
+		<dependency>
+			<groupId>com.typesafe.akka</groupId>
+			<artifactId>akka-remote_${scala.binary.version}</artifactId>
+			<version>${akka.version}</version>
+		</dependency>
+
+		<!-- Akka Discovery -->
+		<dependency>
+			<groupId>com.typesafe.akka</groupId>
+			<artifactId>akka-discovery_${scala.binary.version}</artifactId>
+			<version>${akka.version}</version>
+		</dependency>
+
+		<!-- Akka Coordination -->
+		<dependency>
+			<groupId>com.typesafe.akka</groupId>
+			<artifactId>akka-coordination_${scala.binary.version}</artifactId>
+			<version>${akka.version}</version>
+		</dependency>
+
+		<!-- Akka Distributed Data -->
+		<dependency>
+			<groupId>com.typesafe.akka</groupId>
+			<artifactId>akka-distributed-data_${scala.binary.version}</artifactId>
+			<version>${akka.version}</version>
+		</dependency>
+
+		<!-- Akka PKI -->
+		<dependency>
+			<groupId>com.typesafe.akka</groupId>
+			<artifactId>akka-pki_${scala.binary.version}</artifactId>
+			<version>${akka.version}</version>
+		</dependency>
+
+		<!-- Akka SLF4J -->
+		<dependency>
+			<groupId>com.typesafe.akka</groupId>
+			<artifactId>akka-slf4j_${scala.binary.version}</artifactId>
+			<version>${akka.version}</version>
+		</dependency>
+
+		<!-- Akka Protobuf -->
+		<dependency>
+			<groupId>com.typesafe.akka</groupId>
+			<artifactId>akka-protobuf-v3_${scala.binary.version}</artifactId>
+			<version>${akka.version}</version>
+		</dependency>
+
+		<dependency>
+			<groupId>com.typesafe.akka</groupId>
+			<artifactId>akka-stream_${scala.binary.version}</artifactId>
+			<version>${akka.version}</version>
+		</dependency>
+
+		<!-- Akka Management -->
+		<dependency>
+			<groupId>com.lightbend.akka.management</groupId>
+			<artifactId>akka-management_${scala.binary.version}</artifactId>
+			<version>1.4.0</version>
+		</dependency>
+
+		<!-- Akka Management Cluster Bootstrap -->
+		<dependency>
+			<groupId>com.lightbend.akka.management</groupId>
+			<artifactId>akka-management-cluster-bootstrap_${scala.binary.version}</artifactId>
+			<version>1.2.0</version>
+		</dependency>
+
+		<!-- Akka Management Cluster HTTP -->
+		<dependency>
+			<groupId>com.lightbend.akka.management</groupId>
+			<artifactId>akka-management-cluster-http_${scala.binary.version}</artifactId>
+			<version>1.2.0</version>
+		</dependency>
+
+		<!-- Akka HTTP -->
+		<dependency>
+			<groupId>com.typesafe.akka</groupId>
+			<artifactId>akka-http_${scala.binary.version}</artifactId>
+			<version>10.2.10</version>
+		</dependency>
+
+		<!-- Akka Cluster Sharding -->
+		<dependency>
+			<groupId>com.typesafe.akka</groupId>
+			<artifactId>akka-cluster-sharding_${scala.binary.version}</artifactId>
+			<version>${akka.version}</version>
+		</dependency>
+
+		<!-- Akka Persistence -->
+		<dependency>
+			<groupId>com.typesafe.akka</groupId>
+			<artifactId>akka-persistence_${scala.binary.version}</artifactId>
+			<version>${akka.version}</version>
+		</dependency>
+
+		<!-- SLF4J API -->
+		<dependency>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-api</artifactId>
+			<version>2.0.12</version>
+		</dependency>
+
+		<!-- Logging -->
+		<dependency>
+			<groupId>ch.qos.logback</groupId>
+			<artifactId>logback-classic</artifactId>
+			<version>1.5.13</version>
+		</dependency>
+
+		<!-- Spring Boot Test -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
+		</dependency>
+
+		<!-- Database Dependencies -->
+		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+			<version>42.7.1</version>
+		</dependency>
+
+		<dependency>
+			<groupId>mysql</groupId>
+			<artifactId>mysql-connector-java</artifactId>
+			<version>8.0.33</version>
+		</dependency>
+
+		<dependency>
+			<groupId>org.mongodb</groupId>
+			<artifactId>mongodb-driver-sync</artifactId>
+			<version>5.2.1</version>
 		</dependency>
 	</dependencies>
 
