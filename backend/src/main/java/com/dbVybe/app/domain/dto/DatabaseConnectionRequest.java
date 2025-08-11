@@ -7,6 +7,8 @@ import java.util.HashMap;
  * DTO for database connection details
  */
 public class DatabaseConnectionRequest {
+    private String userId; // User who owns this connection
+    private String connectionName; // User-friendly name for the connection
     private String databaseType; // POSTGRESQL, MYSQL, MONGODB
     private String host;
     private int port;
@@ -31,7 +33,22 @@ public class DatabaseConnectionRequest {
         this.additionalProperties = new HashMap<>();
     }
     
+    // Constructor with user info
+    public DatabaseConnectionRequest(String userId, String connectionName, String databaseType, 
+                                  String host, int port, String databaseName, 
+                                  String username, String password) {
+        this(databaseType, host, port, databaseName, username, password);
+        this.userId = userId;
+        this.connectionName = connectionName;
+    }
+    
     // Getters and Setters
+    public String getUserId() { return userId; }
+    public void setUserId(String userId) { this.userId = userId; }
+    
+    public String getConnectionName() { return connectionName; }
+    public void setConnectionName(String connectionName) { this.connectionName = connectionName; }
+    
     public String getDatabaseType() { return databaseType; }
     public void setDatabaseType(String databaseType) { this.databaseType = databaseType; }
     
@@ -62,7 +79,9 @@ public class DatabaseConnectionRequest {
     @Override
     public String toString() {
         return "DatabaseConnectionRequest{" +
-                "databaseType='" + databaseType + '\'' +
+                "userId='" + userId + '\'' +
+                ", connectionName='" + connectionName + '\'' +
+                ", databaseType='" + databaseType + '\'' +
                 ", host='" + host + '\'' +
                 ", port=" + port +
                 ", databaseName='" + databaseName + '\'' +
