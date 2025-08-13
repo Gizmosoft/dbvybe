@@ -2,6 +2,7 @@ package com.dbVybe.app.cluster;
 
 import akka.actor.typed.ActorSystem;
 import akka.actor.typed.Behavior;
+import akka.actor.typed.Scheduler;
 import akka.cluster.typed.Cluster;
 import akka.management.javadsl.AkkaManagement;
 import com.typesafe.config.Config;
@@ -77,5 +78,15 @@ public abstract class ClusterNode {
      */
     public String getNodeName() {
         return nodeName;
+    }
+    
+    /**
+     * Get the scheduler for this node
+     */
+    public Scheduler getScheduler() {
+        if (actorSystem != null) {
+            return actorSystem.scheduler();
+        }
+        throw new IllegalStateException("ActorSystem not started");
     }
 } 

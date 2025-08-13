@@ -4,6 +4,9 @@ import akka.actor.typed.ActorRef;
 import akka.actor.typed.Scheduler;
 import com.dbVybe.app.actor.security.SecurityActor;
 import com.dbVybe.app.actor.session.UserSessionManager;
+import com.dbVybe.app.actor.database.DatabaseCommunicationManager;
+import com.dbVybe.app.service.llm.GroqLLMService;
+import com.dbVybe.app.service.agent.NLPAgent;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -20,9 +23,13 @@ public class ClusterManager {
     private LLMProcessingSystem llmProcessingNode;
     private DataAnalysisSystem dataAnalysisNode;
     
+    private final GroqLLMService groqLLMService;
+    private final NLPAgent nlpAgent;
+    
     @Autowired
-    public ClusterManager() {
-        // Constructor
+    public ClusterManager(GroqLLMService groqLLMService, NLPAgent nlpAgent) {
+        this.groqLLMService = groqLLMService;
+        this.nlpAgent = nlpAgent;
     }
     
     @PostConstruct
@@ -33,8 +40,8 @@ public class ClusterManager {
         coreServicesNode = new DatabaseExplorationSystem();
         coreServicesNode.start();
         
-        // Start LLM Processing Node (Node 2)
-        llmProcessingNode = new LLMProcessingSystem();
+        // Start LLM Processing Node (Node 2) with AI Agent integration
+        llmProcessingNode = new LLMProcessingSystem(groqLLMService, nlpAgent);
         llmProcessingNode.start();
         
         // Start Data Analysis Node (Node 3)
@@ -86,7 +93,7 @@ public class ClusterManager {
     /**
      * Get DatabaseCommunicationManager from Core Services Node
      */
-    public ActorRef<com.dbVybe.app.actor.database.DatabaseCommunicationManager.Command> getDatabaseCommunicationManager() {
+    public ActorRef<DatabaseCommunicationManager.Command> getDatabaseCommunicationManager() {
         if (coreServicesNode != null) {
             return coreServicesNode.getDatabaseCommunicationManager();
         }
@@ -101,5 +108,25 @@ public class ClusterManager {
             return coreServicesNode.getScheduler();
         }
         throw new IllegalStateException("Core Services Node not started");
+    }
+    
+    /**
+     * Get LLMOrchestrator from LLM Processing Node
+     */
+    public ActorRef<LLMProcessingSystem.LLMOrchestrator.Command> getLLMOrchestrator() {
+        if (llmProcessingNode != null) {
+            return llmProcessingNode.getLLMOrchestrator();
+        }
+        throw new IllegalStateException("LLM Processing Node not started");
+    }
+    
+    /**
+     * Get LLM Processing Node Scheduler
+     */
+    public Scheduler getLLMScheduler() {
+        if (llmProcessingNode != null) {
+            return llmProcessingNode.getScheduler();
+        }
+        throw new IllegalStateException("LLM Processing Node not started");
     }
 } 
