@@ -8,6 +8,7 @@ import akka.actor.typed.javadsl.Behaviors;
 import com.dbVybe.app.actor.database.DatabaseCommunicationManager;
 import com.dbVybe.app.actor.security.SecurityActor;
 import com.dbVybe.app.actor.session.UserSessionManager;
+import com.dbVybe.app.actor.analysis.SchemaAnalysisActor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,6 +25,7 @@ public class DatabaseExplorationSystem {
     private ActorRef<SecurityActor.Command> securityActor;
     private ActorRef<UserSessionManager.Command> userSessionManager;
     private ActorRef<DatabaseCommunicationManager.Command> databaseCommunicationManager;
+    private ActorRef<SchemaAnalysisActor.Command> schemaAnalysisActor;
     
     public void start() {
         logger.info("Starting DatabaseExplorationSystem (Core Services Node)...");
@@ -88,6 +90,32 @@ public class DatabaseExplorationSystem {
             return system.scheduler();
         }
         throw new IllegalStateException("ActorSystem not started");
+    }
+    
+    /**
+     * Set SchemaAnalysisActor reference for database communication integration
+     */
+    public void setSchemaAnalysisActor(ActorRef<SchemaAnalysisActor.Command> schemaAnalysisActor) {
+        this.schemaAnalysisActor = schemaAnalysisActor;
+        
+        if (databaseCommunicationManager != null && schemaAnalysisActor != null) {
+            logger.info("Injecting SchemaAnalysisActor reference into DatabaseCommunicationManager");
+            databaseCommunicationManager.tell(new DatabaseCommunicationManager.SetSchemaAnalysisActor(schemaAnalysisActor));
+        }
+    }
+    
+    /**
+     * Get DatabaseExplorationSupervisor reference
+     */
+    public ActorRef<DatabaseExplorationSupervisor.Command> getSupervisor() {
+        return supervisor;
+    }
+    
+    /**
+     * Get SchemaAnalysisActor reference
+     */
+    public ActorRef<SchemaAnalysisActor.Command> getSchemaAnalysisActor() {
+        return schemaAnalysisActor;
     }
     
     /**

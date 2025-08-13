@@ -39,17 +39,21 @@ public class LLMController {
     }
     
     /**
-     * Process a chat message through the LLM system
+     * Process a chat message through the LLM system with database context
+     * Supports both standard processing (with request tracking) and direct forwarding (optimized)
+     * Integrates with schema analysis, vector search, and query execution
      */
     @PostMapping("/chat")
     public CompletionStage<ResponseEntity<LLMChatResponse>> processChat(
             @RequestBody LLMChatRequest request,
-            @RequestHeader(value = "X-User-ID", required = false) String userId) {
+            @RequestHeader(value = "X-User-ID", required = false) String userId,
+            @RequestParam(value = "direct", required = false, defaultValue = "false") boolean useDirect) {
         
         // Default user ID if not provided
         final String finalUserId = (userId == null || userId.trim().isEmpty()) ? "anonymous" : userId;
         
-        logger.info("Received chat request from user {}: {}", finalUserId, request.getMessage());
+        logger.info("Received chat request from user {} using {} mode: {}", 
+            finalUserId, useDirect ? "DIRECT" : "STANDARD", request.getMessage());
         
         try {
             
@@ -57,11 +61,15 @@ public class LLMController {
             ActorRef<LLMProcessingSystem.LLMOrchestrator.Command> llmOrchestrator = clusterManager.getLLMOrchestrator();
             Scheduler scheduler = clusterManager.getLLMScheduler();
             
-            // Send message to LLM orchestrator using AskPattern
-            CompletionStage<LLMProcessingSystem.LLMOrchestrator.ChatResponse> future = 
-                AskPattern.<LLMProcessingSystem.LLMOrchestrator.Command, LLMProcessingSystem.LLMOrchestrator.ChatResponse>ask(
+            // Choose between standard processing (with request tracking) or direct forwarding
+            CompletionStage<LLMProcessingSystem.LLMOrchestrator.ChatResponse> future;
+            
+            if (useDirect) {
+                // Use direct forwarding for optimized performance
+                logger.debug("Using direct forwarding for user {}", finalUserId);
+                future = AskPattern.<LLMProcessingSystem.LLMOrchestrator.Command, LLMProcessingSystem.LLMOrchestrator.ChatResponse>ask(
                     llmOrchestrator,
-                    replyTo -> new LLMProcessingSystem.LLMOrchestrator.ProcessChatMessage(
+                    replyTo -> LLMProcessingSystem.createDirectChatMessage(
                         finalUserId, 
                         request.getMessage(), 
                         request.getSessionId(), 
@@ -70,25 +78,42 @@ public class LLMController {
                     TIMEOUT,
                     scheduler
                 );
+            } else {
+                // Use standard processing with request tracking
+                logger.debug("Using standard processing with request tracking for user {}", finalUserId);
+                future = AskPattern.<LLMProcessingSystem.LLMOrchestrator.Command, LLMProcessingSystem.LLMOrchestrator.ChatResponse>ask(
+                    llmOrchestrator,
+                    replyTo -> LLMProcessingSystem.createChatMessage(
+                        finalUserId, 
+                        request.getMessage(), 
+                        request.getSessionId(), 
+                        replyTo
+                    ),
+                    TIMEOUT,
+                    scheduler
+                );
+            }
             
             // Transform actor response to HTTP response
             return future.thenApply(actorResponse -> {
                 if (actorResponse.isSuccess()) {
                     LLMChatResponse response = new LLMChatResponse(
-                        actorResponse.getRequestId(),
+                        actorResponse.getRequestId(), // Will be null in direct mode
                         actorResponse.getResponse(),
                         request.getSessionId()
                     );
-                    logger.info("Successfully processed chat request for user {}", finalUserId);
+                    logger.info("Successfully processed chat request for user {} using {} mode", 
+                        finalUserId, useDirect ? "DIRECT" : "STANDARD");
                     return ResponseEntity.ok(response);
                 } else {
                     LLMChatResponse errorResponse = new LLMChatResponse(
-                        actorResponse.getRequestId(),
+                        actorResponse.getRequestId(), // Will be null in direct mode
                         actorResponse.getError(),
                         request.getSessionId(),
                         true
                     );
-                    logger.error("Error processing chat request for user {}: {}", finalUserId, actorResponse.getError());
+                    logger.error("Error processing chat request for user {} using {} mode: {}", 
+                        finalUserId, useDirect ? "DIRECT" : "STANDARD", actorResponse.getError());
                     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
                 }
             }).exceptionally(throwable -> {

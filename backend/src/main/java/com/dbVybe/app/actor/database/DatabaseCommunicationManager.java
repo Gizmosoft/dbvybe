@@ -1,6 +1,7 @@
 package com.dbVybe.app.actor.database;
 
 import akka.actor.typed.Behavior;
+import akka.actor.typed.ActorRef;
 import akka.actor.typed.javadsl.AbstractBehavior;
 import akka.actor.typed.javadsl.ActorContext;
 import akka.actor.typed.javadsl.Behaviors;
@@ -11,6 +12,7 @@ import com.dbVybe.app.domain.model.DatabaseType;
 import com.dbVybe.app.domain.model.UserDatabaseConnection;
 import com.dbVybe.app.service.UserDatabaseConnectionService;
 import com.dbVybe.app.service.ActorServiceLocator;
+import com.dbVybe.app.actor.analysis.SchemaAnalysisActor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.util.UUID;
@@ -35,23 +37,23 @@ public class DatabaseCommunicationManager extends AbstractBehavior<DatabaseCommu
     // Commands
     public static class EstablishConnection implements Command {
         private final DatabaseConnectionRequest request;
-        private final akka.actor.typed.ActorRef<ConnectionResponse> replyTo;
+        private final ActorRef<ConnectionResponse> replyTo;
         
-        public EstablishConnection(DatabaseConnectionRequest request, akka.actor.typed.ActorRef<ConnectionResponse> replyTo) {
+        public EstablishConnection(DatabaseConnectionRequest request, ActorRef<ConnectionResponse> replyTo) {
             this.request = request;
             this.replyTo = replyTo;
         }
         
         public DatabaseConnectionRequest getRequest() { return request; }
-        public akka.actor.typed.ActorRef<ConnectionResponse> getReplyTo() { return replyTo; }
+        public ActorRef<ConnectionResponse> getReplyTo() { return replyTo; }
     }
     
     public static class ConnectToSavedConnection implements Command {
         private final String connectionId;
         private final String userId;
-        private final akka.actor.typed.ActorRef<ConnectionResponse> replyTo;
+        private final ActorRef<ConnectionResponse> replyTo;
         
-        public ConnectToSavedConnection(String connectionId, String userId, akka.actor.typed.ActorRef<ConnectionResponse> replyTo) {
+        public ConnectToSavedConnection(String connectionId, String userId, ActorRef<ConnectionResponse> replyTo) {
             this.connectionId = connectionId;
             this.userId = userId;
             this.replyTo = replyTo;
@@ -59,41 +61,41 @@ public class DatabaseCommunicationManager extends AbstractBehavior<DatabaseCommu
         
         public String getConnectionId() { return connectionId; }
         public String getUserId() { return userId; }
-        public akka.actor.typed.ActorRef<ConnectionResponse> getReplyTo() { return replyTo; }
+        public ActorRef<ConnectionResponse> getReplyTo() { return replyTo; }
     }
     
     public static class GetUserConnections implements Command {
         private final String userId;
-        private final akka.actor.typed.ActorRef<UserConnectionsResponse> replyTo;
+        private final ActorRef<UserConnectionsResponse> replyTo;
         
-        public GetUserConnections(String userId, akka.actor.typed.ActorRef<UserConnectionsResponse> replyTo) {
+        public GetUserConnections(String userId, ActorRef<UserConnectionsResponse> replyTo) {
             this.userId = userId;
             this.replyTo = replyTo;
         }
         
         public String getUserId() { return userId; }
-        public akka.actor.typed.ActorRef<UserConnectionsResponse> getReplyTo() { return replyTo; }
+        public ActorRef<UserConnectionsResponse> getReplyTo() { return replyTo; }
     }
     
     public static class TestConnection implements Command {
         private final DatabaseConnectionRequest request;
-        private final akka.actor.typed.ActorRef<ConnectionResponse> replyTo;
+        private final ActorRef<ConnectionResponse> replyTo;
         
-        public TestConnection(DatabaseConnectionRequest request, akka.actor.typed.ActorRef<ConnectionResponse> replyTo) {
+        public TestConnection(DatabaseConnectionRequest request, ActorRef<ConnectionResponse> replyTo) {
             this.request = request;
             this.replyTo = replyTo;
         }
         
         public DatabaseConnectionRequest getRequest() { return request; }
-        public akka.actor.typed.ActorRef<ConnectionResponse> getReplyTo() { return replyTo; }
+        public ActorRef<ConnectionResponse> getReplyTo() { return replyTo; }
     }
     
     public static class CloseConnection implements Command {
         private final String connectionId;
         private final String userId;
-        private final akka.actor.typed.ActorRef<ConnectionResponse> replyTo;
+        private final ActorRef<ConnectionResponse> replyTo;
         
-        public CloseConnection(String connectionId, String userId, akka.actor.typed.ActorRef<ConnectionResponse> replyTo) {
+        public CloseConnection(String connectionId, String userId, ActorRef<ConnectionResponse> replyTo) {
             this.connectionId = connectionId;
             this.userId = userId;
             this.replyTo = replyTo;
@@ -101,15 +103,15 @@ public class DatabaseCommunicationManager extends AbstractBehavior<DatabaseCommu
         
         public String getConnectionId() { return connectionId; }
         public String getUserId() { return userId; }
-        public akka.actor.typed.ActorRef<ConnectionResponse> getReplyTo() { return replyTo; }
+        public ActorRef<ConnectionResponse> getReplyTo() { return replyTo; }
     }
     
     public static class GetConnectionStatus implements Command {
         private final String connectionId;
         private final String userId;
-        private final akka.actor.typed.ActorRef<ConnectionResponse> replyTo;
+        private final ActorRef<ConnectionResponse> replyTo;
         
-        public GetConnectionStatus(String connectionId, String userId, akka.actor.typed.ActorRef<ConnectionResponse> replyTo) {
+        public GetConnectionStatus(String connectionId, String userId, ActorRef<ConnectionResponse> replyTo) {
             this.connectionId = connectionId;
             this.userId = userId;
             this.replyTo = replyTo;
@@ -117,15 +119,15 @@ public class DatabaseCommunicationManager extends AbstractBehavior<DatabaseCommu
         
         public String getConnectionId() { return connectionId; }
         public String getUserId() { return userId; }
-        public akka.actor.typed.ActorRef<ConnectionResponse> getReplyTo() { return replyTo; }
+        public ActorRef<ConnectionResponse> getReplyTo() { return replyTo; }
     }
     
     public static class DeleteSavedConnection implements Command {
         private final String connectionId;
         private final String userId;
-        private final akka.actor.typed.ActorRef<ConnectionResponse> replyTo;
+        private final ActorRef<ConnectionResponse> replyTo;
         
-        public DeleteSavedConnection(String connectionId, String userId, akka.actor.typed.ActorRef<ConnectionResponse> replyTo) {
+        public DeleteSavedConnection(String connectionId, String userId, ActorRef<ConnectionResponse> replyTo) {
             this.connectionId = connectionId;
             this.userId = userId;
             this.replyTo = replyTo;
@@ -133,7 +135,31 @@ public class DatabaseCommunicationManager extends AbstractBehavior<DatabaseCommu
         
         public String getConnectionId() { return connectionId; }
         public String getUserId() { return userId; }
-        public akka.actor.typed.ActorRef<ConnectionResponse> getReplyTo() { return replyTo; }
+        public ActorRef<ConnectionResponse> getReplyTo() { return replyTo; }
+    }
+    
+    public static class SetSchemaAnalysisActor implements Command {
+        private final ActorRef<SchemaAnalysisActor.Command> schemaAnalysisActor;
+        
+        public SetSchemaAnalysisActor(ActorRef<SchemaAnalysisActor.Command> schemaAnalysisActor) {
+            this.schemaAnalysisActor = schemaAnalysisActor;
+        }
+        
+        public ActorRef<SchemaAnalysisActor.Command> getSchemaAnalysisActor() { return schemaAnalysisActor; }
+    }
+    
+    public static class SetAnalysisAgents implements Command {
+        private final com.dbVybe.app.service.agent.DatabaseSchemaAgent databaseSchemaAgent;
+        private final com.dbVybe.app.service.agent.GraphAnalysisAgent graphAnalysisAgent;
+        
+        public SetAnalysisAgents(com.dbVybe.app.service.agent.DatabaseSchemaAgent databaseSchemaAgent,
+                               com.dbVybe.app.service.agent.GraphAnalysisAgent graphAnalysisAgent) {
+            this.databaseSchemaAgent = databaseSchemaAgent;
+            this.graphAnalysisAgent = graphAnalysisAgent;
+        }
+        
+        public com.dbVybe.app.service.agent.DatabaseSchemaAgent getDatabaseSchemaAgent() { return databaseSchemaAgent; }
+        public com.dbVybe.app.service.agent.GraphAnalysisAgent getGraphAnalysisAgent() { return graphAnalysisAgent; }
     }
     
     // Response wrapper
@@ -167,13 +193,30 @@ public class DatabaseCommunicationManager extends AbstractBehavior<DatabaseCommu
     // Actor state - Active connections in memory
     private final Map<String, DatabaseConnection> activeConnections = new ConcurrentHashMap<>();
     
+    // Schema analysis actor reference (injected via message)
+    private ActorRef<SchemaAnalysisActor.Command> schemaAnalysisActor;
+    
+    // Analysis agents for cleanup operations
+    private com.dbVybe.app.service.agent.DatabaseSchemaAgent databaseSchemaAgent;
+    private com.dbVybe.app.service.agent.GraphAnalysisAgent graphAnalysisAgent;
+    
     public static Behavior<Command> create() {
         return Behaviors.setup(DatabaseCommunicationManager::new);
+    }
+    
+    public static Behavior<Command> create(ActorRef<SchemaAnalysisActor.Command> schemaAnalysisActor) {
+        return Behaviors.setup(context -> new DatabaseCommunicationManager(context, schemaAnalysisActor));
     }
     
     private DatabaseCommunicationManager(ActorContext<Command> context) {
         super(context);
         logger.info("DatabaseCommunicationManager created - User-specific connection management enabled");
+    }
+    
+    private DatabaseCommunicationManager(ActorContext<Command> context, ActorRef<SchemaAnalysisActor.Command> schemaAnalysisActor) {
+        super(context);
+        this.schemaAnalysisActor = schemaAnalysisActor;
+        logger.info("DatabaseCommunicationManager created with Schema Analysis integration - User-specific connection management enabled");
     }
     
     @Override
@@ -186,6 +229,8 @@ public class DatabaseCommunicationManager extends AbstractBehavior<DatabaseCommu
                 .onMessage(CloseConnection.class, this::onCloseConnection)
                 .onMessage(GetConnectionStatus.class, this::onGetConnectionStatus)
                 .onMessage(DeleteSavedConnection.class, this::onDeleteSavedConnection)
+                .onMessage(SetSchemaAnalysisActor.class, this::onSetSchemaAnalysisActor)
+                .onMessage(SetAnalysisAgents.class, this::onSetAnalysisAgents)
                 .onSignal(PostStop.class, sig -> {
                     activeConnections.values().forEach(c -> { try { c.close(); } catch (Exception ignored) {} });
                     activeConnections.clear();
@@ -256,6 +301,9 @@ public class DatabaseCommunicationManager extends AbstractBehavior<DatabaseCommu
             
             logger.info("Connection established and saved: {} for user: {}", connectionId, request.getUserId());
             
+            // Trigger schema analysis for the new connection
+            triggerSchemaAnalysis(connectionId, request.getUserId(), request.getDatabaseType());
+            
         } catch (Exception e) {
             logger.error("Failed to establish connection for user: {}: {}", request.getUserId(), e.getMessage(), e);
             
@@ -307,8 +355,11 @@ public class DatabaseCommunicationManager extends AbstractBehavior<DatabaseCommu
             // Hard delete
             boolean deleted = svc.deleteUserDatabaseConnection(connectionId, userId);
             if (deleted) {
+                // Trigger cleanup of analysis data (Qdrant and Neo4j)
+                triggerAnalysisDataCleanup(connectionId, userId);
+                
                 command.getReplyTo().tell(new ConnectionResponse(
-                    DatabaseConnectionResponse.success(connectionId, "Connection deleted")
+                    DatabaseConnectionResponse.success(connectionId, "Connection and associated analysis data deleted")
                 ));
             } else {
                 command.getReplyTo().tell(new ConnectionResponse(
@@ -528,7 +579,6 @@ public class DatabaseCommunicationManager extends AbstractBehavior<DatabaseCommu
     
     private Behavior<Command> onGetConnectionStatus(GetConnectionStatus command) {
         String connectionId = command.getConnectionId();
-        String userId = command.getUserId();
         
         DatabaseConnection connection = activeConnections.get(connectionId);
         
@@ -606,5 +656,98 @@ public class DatabaseCommunicationManager extends AbstractBehavior<DatabaseCommu
         DatabaseConnection connection = createConnection(request, connectionId);
         connection.test();
         connection.close();
+    }
+    
+    private Behavior<Command> onSetSchemaAnalysisActor(SetSchemaAnalysisActor command) {
+        logger.info("Setting SchemaAnalysisActor reference");
+        this.schemaAnalysisActor = command.getSchemaAnalysisActor();
+        return Behaviors.same();
+    }
+    
+    private Behavior<Command> onSetAnalysisAgents(SetAnalysisAgents command) {
+        logger.info("Setting analysis agents for cleanup operations");
+        this.databaseSchemaAgent = command.getDatabaseSchemaAgent();
+        this.graphAnalysisAgent = command.getGraphAnalysisAgent();
+        return Behaviors.same();
+    }
+    
+    /**
+     * Trigger schema analysis for a newly established database connection
+     */
+    private void triggerSchemaAnalysis(String connectionId, String userId, String databaseType) {
+        if (schemaAnalysisActor == null) {
+            logger.warn("SchemaAnalysisActor not available. Skipping schema analysis for connection: {}", connectionId);
+            return;
+        }
+        
+        try {
+            DatabaseType dbType = DatabaseType.fromString(databaseType);
+            
+            logger.info("Triggering schema analysis for connection {} (user: {}, type: {})", 
+                connectionId, userId, dbType);
+            
+            // Create a response handler for schema analysis result
+            ActorRef<SchemaAnalysisActor.SchemaAnalysisResponse> responseHandler = 
+                getContext().spawn(Behaviors.<SchemaAnalysisActor.SchemaAnalysisResponse>receiveMessage(response -> {
+                    if (response.isSuccess()) {
+                        logger.info("Schema analysis completed successfully for connection {} - Tables: {}, Embeddings: {}, Time: {}ms", 
+                            response.getConnectionId(), response.getTablesAnalyzed(), 
+                            response.getEmbeddingsGenerated(), response.getProcessingTimeMs());
+                    } else {
+                        logger.error("Schema analysis failed for connection {}: {}", 
+                            response.getConnectionId(), response.getError());
+                    }
+                    return Behaviors.stopped();
+                }), "schema-analysis-response-" + connectionId.substring(0, 8));
+            
+            // Send schema analysis request
+            schemaAnalysisActor.tell(new SchemaAnalysisActor.AnalyzeSchema(
+                connectionId, userId, dbType, responseHandler
+            ));
+            
+        } catch (Exception e) {
+            logger.error("Failed to trigger schema analysis for connection {}: {}", connectionId, e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Trigger cleanup of analysis data when a database connection is permanently deleted
+     */
+    private void triggerAnalysisDataCleanup(String connectionId, String userId) {
+        logger.info("Triggering analysis data cleanup for connection {} (user: {})", connectionId, userId);
+        
+        // Clean up vector embeddings in Qdrant
+        if (databaseSchemaAgent != null) {
+            databaseSchemaAgent.deleteSchemaEmbeddings(connectionId, userId)
+                .whenComplete((success, throwable) -> {
+                    if (throwable != null) {
+                        logger.error("Error cleaning up Qdrant embeddings for connection {}: {}", 
+                            connectionId, throwable.getMessage());
+                    } else if (success) {
+                        logger.info("Successfully cleaned up Qdrant embeddings for connection {}", connectionId);
+                    } else {
+                        logger.warn("Failed to clean up Qdrant embeddings for connection {}", connectionId);
+                    }
+                });
+        } else {
+            logger.warn("DatabaseSchemaAgent not available. Skipping Qdrant cleanup for connection: {}", connectionId);
+        }
+        
+        // Clean up graph relationships in Neo4j
+        if (graphAnalysisAgent != null) {
+            graphAnalysisAgent.deleteConnectionGraphData(connectionId, userId)
+                .whenComplete((success, throwable) -> {
+                    if (throwable != null) {
+                        logger.error("Error cleaning up Neo4j graph data for connection {}: {}", 
+                            connectionId, throwable.getMessage());
+                    } else if (success) {
+                        logger.info("Successfully cleaned up Neo4j graph data for connection {}", connectionId);
+                    } else {
+                        logger.warn("Failed to clean up Neo4j graph data for connection {}", connectionId);
+                    }
+                });
+        } else {
+            logger.warn("GraphAnalysisAgent not available. Skipping Neo4j cleanup for connection: {}", connectionId);
+        }
     }
 }

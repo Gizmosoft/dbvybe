@@ -8,8 +8,10 @@ import akka.actor.typed.javadsl.AbstractBehavior;
 import akka.actor.typed.javadsl.Receive;
 import com.dbVybe.app.actor.llm.LLMActor;
 import com.dbVybe.app.actor.llm.QueryGenerationActor;
+import com.dbVybe.app.actor.llm.QueryExecutorActor;
 import com.dbVybe.app.service.llm.LLMService;
 import com.dbVybe.app.service.agent.NLPAgent;
+import com.dbVybe.app.service.agent.QueryExecutionAgent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.util.UUID;
@@ -29,8 +31,10 @@ public class LLMProcessingSystem extends ClusterNode {
     private ActorRef<LLMOrchestrator.Command> llmOrchestrator;
     private ActorRef<LLMActor.Command> llmActor;
     private ActorRef<QueryGenerationActor.Command> queryGenerationActor;
+    private ActorRef<QueryExecutorActor.Command> queryExecutorActor;
     private LLMService llmService;
     private NLPAgent nlpAgent;
+    private QueryExecutionAgent queryExecutionAgent;
     
     public LLMProcessingSystem() {
         super("LLMProcessingSystem", "application-llm-node.conf");
@@ -48,6 +52,19 @@ public class LLMProcessingSystem extends ClusterNode {
         super("LLMProcessingSystem", "application-llm-node.conf");
         this.llmService = llmService;
         this.nlpAgent = nlpAgent;
+        this.queryExecutionAgent = null; // Will be injected separately
+        
+        // Initialize the NLP Agent if provided
+        if (nlpAgent instanceof com.dbVybe.app.service.agent.LangChainNLPAgent) {
+            ((com.dbVybe.app.service.agent.LangChainNLPAgent) nlpAgent).initialize();
+        }
+    }
+    
+    public LLMProcessingSystem(LLMService llmService, NLPAgent nlpAgent, QueryExecutionAgent queryExecutionAgent) {
+        super("LLMProcessingSystem", "application-llm-node.conf");
+        this.llmService = llmService;
+        this.nlpAgent = nlpAgent;
+        this.queryExecutionAgent = queryExecutionAgent;
         
         // Initialize the NLP Agent if provided
         if (nlpAgent instanceof com.dbVybe.app.service.agent.LangChainNLPAgent) {
@@ -69,6 +86,14 @@ public class LLMProcessingSystem extends ClusterNode {
             if (nlpAgent != null) {
                 // Create QueryGenerationActor with NLP Agent
                 queryGenerationActor = context.spawn(QueryGenerationActor.create(nlpAgent), "query-generation-actor");
+                
+                // Create QueryExecutorActor with QueryExecutionAgent if available
+                if (queryExecutionAgent != null) {
+                    queryExecutorActor = context.spawn(QueryExecutorActor.create(queryExecutionAgent), "query-executor-actor");
+                    logger.info("Created QueryExecutorActor with Query Execution Agent integration");
+                } else {
+                    logger.warn("QueryExecutionAgent not provided. Query execution will not be available.");
+                }
                 
                 // Create the enhanced LLMActor with intelligent routing
                 llmActor = context.spawn(LLMActor.create(llmService, nlpAgent, queryGenerationActor), "llm-actor");
@@ -116,6 +141,28 @@ public class LLMProcessingSystem extends ClusterNode {
     }
     
     /**
+     * Get QueryExecutorActor reference
+     */
+    public ActorRef<QueryExecutorActor.Command> getQueryExecutorActor() {
+        return queryExecutorActor;
+    }
+    
+    /**
+     * Utility method to create a standard chat message (with request tracking)
+     */
+    public static LLMOrchestrator.ProcessChatMessage createChatMessage(String userId, String message, String sessionId, ActorRef<LLMOrchestrator.ChatResponse> replyTo) {
+        return new LLMOrchestrator.ProcessChatMessage(userId, message, sessionId, replyTo);
+    }
+    
+    /**
+     * Utility method to create a direct chat message (optimized forwarding, no request tracking)
+     * Use this for high-throughput scenarios where request ID tracking is not essential
+     */
+    public static LLMOrchestrator.ProcessChatMessageDirect createDirectChatMessage(String userId, String message, String sessionId, ActorRef<LLMOrchestrator.ChatResponse> replyTo) {
+        return new LLMOrchestrator.ProcessChatMessageDirect(userId, message, sessionId, replyTo);
+    }
+    
+    /**
      * LLMOrchestrator - Main actor for coordinating LLM requests
      * Handles chat interface requests and coordinates LLM processing
      */
@@ -136,6 +183,29 @@ public class LLMProcessingSystem extends ClusterNode {
             private final ActorRef<ChatResponse> replyTo;
             
             public ProcessChatMessage(String userId, String message, String sessionId, ActorRef<ChatResponse> replyTo) {
+                this.userId = userId;
+                this.message = message;
+                this.sessionId = sessionId;
+                this.replyTo = replyTo;
+            }
+            
+            public String getUserId() { return userId; }
+            public String getMessage() { return message; }
+            public String getSessionId() { return sessionId; }
+            public ActorRef<ChatResponse> getReplyTo() { return replyTo; }
+        }
+        
+        /**
+         * Process a chat message using direct forwarding (no request tracking)
+         * Use this for high-performance scenarios where request ID tracking is not needed
+         */
+        public static class ProcessChatMessageDirect implements Command {
+            private final String userId;
+            private final String message;
+            private final String sessionId;
+            private final ActorRef<ChatResponse> replyTo;
+            
+            public ProcessChatMessageDirect(String userId, String message, String sessionId, ActorRef<ChatResponse> replyTo) {
                 this.userId = userId;
                 this.message = message;
                 this.sessionId = sessionId;
@@ -218,6 +288,7 @@ public class LLMProcessingSystem extends ClusterNode {
         public Receive<Command> createReceive() {
             return newReceiveBuilder()
                 .onMessage(ProcessChatMessage.class, this::onProcessChatMessage)
+                .onMessage(ProcessChatMessageDirect.class, this::onProcessChatMessageDirect)
                 .onMessage(GetStatus.class, this::onGetStatus)
                 .build();
         }
@@ -256,6 +327,53 @@ public class LLMProcessingSystem extends ClusterNode {
                 responseHandler
             ));
             
+            return Behaviors.same();
+        }
+        
+        /**
+         * Process chat message using direct forwarding - optimized for performance
+         * This method forwards the message directly to LLMActor without creating intermediate response handlers
+         * Benefits: Lower memory usage, fewer actor creations, better performance
+         * Trade-offs: No request ID tracking, no centralized logging in orchestrator
+         */
+        private Behavior<Command> onProcessChatMessageDirect(ProcessChatMessageDirect command) {
+            logger.info("LLMOrchestrator forwarding chat message directly from user {} in session {}: '{}'", 
+                command.getUserId(), command.getSessionId(), command.getMessage());
+            
+            // Create a direct response transformer that converts LLMActor.ProcessMessageResponse to ChatResponse
+            ActorRef<LLMActor.ProcessMessageResponse> directResponseHandler = 
+                getContext().spawn(Behaviors.receiveMessage(response -> {
+                    // Transform LLMActor response to ChatResponse format
+                    if (response.isSuccess()) {
+                        command.getReplyTo().tell(new ChatResponse(
+                            null, // No request ID in direct mode for performance
+                            response.getContent(), 
+                            true, 
+                            null
+                        ));
+                        logger.debug("Direct forwarding successful for user {}", command.getUserId());
+                    } else {
+                        command.getReplyTo().tell(new ChatResponse(
+                            null, // No request ID in direct mode
+                            null, 
+                            false, 
+                            response.getError()
+                        ));
+                        logger.debug("Direct forwarding failed for user {}: {}", command.getUserId(), response.getError());
+                    }
+                    return Behaviors.stopped();
+                }), "direct-response-handler-" + System.currentTimeMillis());
+            
+            // Forward message directly to LLMActor (this is the forward() pattern)
+            llmActor.tell(new LLMActor.ProcessMessage(
+                command.getMessage(),
+                command.getUserId(),
+                command.getSessionId(),
+                directResponseHandler
+            ));
+            
+            // Note: No activeRequests tracking in direct mode for maximum performance
+            logger.debug("Message forwarded directly to LLMActor for user {}", command.getUserId());
             return Behaviors.same();
         }
         
