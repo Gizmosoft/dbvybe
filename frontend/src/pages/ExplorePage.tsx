@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Database, 
   Send, 
@@ -10,8 +10,10 @@ import {
   Loader2,
   MessageSquare,
   Table,
-  PieChart
+  PieChart,
+  LogOut
 } from 'lucide-react';
+import React from 'react'; // Added missing import for React
 
 interface Message {
   id: string;
@@ -20,13 +22,20 @@ interface Message {
   timestamp: Date;
   data?: any;
   visualization?: any;
+  query?: string; // Add query field for AI messages
 }
 
-interface DatabaseInfo {
+interface DatabaseConnection {
   id: string;
   name: string;
-  type: string;
-  tables: string[];
+  type: 'mysql' | 'postgresql' | 'mongodb';
+  host: string;
+  port: number;
+  database: string;
+  status: 'connected' | 'disconnected' | 'error';
+  lastSync: string;
+  tables: number;
+  size: string;
 }
 
 const ExplorePage = () => {
@@ -40,30 +49,116 @@ const ExplorePage = () => {
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedDatabase, setSelectedDatabase] = useState<string>('1');
+  const [selectedDatabase, setSelectedDatabase] = useState<string>('');
+  const [user, setUser] = useState<any>(null);
+  const [connections, setConnections] = useState<DatabaseConnection[]>([]);
+  const [isLoadingConnections, setIsLoadingConnections] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  // Mock database data
-  const databases: DatabaseInfo[] = [
-    {
-      id: '1',
-      name: 'Production MySQL',
-      type: 'mysql',
-      tables: ['users', 'orders', 'products', 'categories', 'reviews', 'payments']
-    },
-    {
-      id: '2',
-      name: 'Analytics PostgreSQL',
-      type: 'postgresql',
-      tables: ['events', 'sessions', 'page_views', 'conversions', 'metrics']
-    },
-    {
-      id: '3',
-      name: 'User Data MongoDB',
-      type: 'mongodb',
-      tables: ['profiles', 'preferences', 'activity_logs', 'notifications']
+  // Check if user is logged in and fetch connections
+  useEffect(() => {
+    const userData = localStorage.getItem('user');
+    if (!userData) {
+      navigate('/login');
+      return;
     }
-  ];
+    const user = JSON.parse(userData);
+    setUser(user);
+
+    // Check if a specific database is selected via URL parameter
+    const dbParam = searchParams.get('db');
+    if (dbParam) {
+      setSelectedDatabase(dbParam);
+    }
+
+    // Fetch user connections
+    fetchUserConnections(user.userId);
+  }, [navigate, searchParams]);
+
+  const fetchUserConnections = async (userId: string) => {
+    try {
+      setIsLoadingConnections(true);
+      const response = await fetch(`/api/database/connections?userId=${userId}`);
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // Transform backend data to frontend format
+        const transformedConnections: DatabaseConnection[] = data.connections.map((conn: any) => ({
+          id: conn.connectionId,
+          name: conn.connectionName,
+          type: conn.databaseType.toLowerCase() as 'mysql' | 'postgresql' | 'mongodb',
+          host: conn.host,
+          port: conn.port,
+          database: conn.databaseName,
+          status: 'connected', // Default status since we don't have real-time status
+          lastSync: conn.lastUsedAt ? new Date(conn.lastUsedAt).toLocaleString() : 'Never',
+          tables: 0, // Will be updated when we get actual data
+          size: '0 MB' // Will be updated when we get actual data
+        }));
+
+        setConnections(transformedConnections);
+        
+        // If no database is selected and we have connections, select the first one
+        if (!selectedDatabase && transformedConnections.length > 0) {
+          setSelectedDatabase(transformedConnections[0].id);
+        }
+      } else {
+        console.error('Failed to fetch connections:', data.message);
+        setConnections([]);
+      }
+    } catch (error) {
+      console.error('Error fetching connections:', error);
+      setConnections([]);
+    } finally {
+      setIsLoadingConnections(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      
+      // Call logout API
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sessionId: userData.sessionId,
+          action: 'LOGOUT'
+        }),
+      });
+
+      // Clear localStorage regardless of API response
+      localStorage.removeItem('user');
+      sessionStorage.clear();
+      
+      // Redirect to home page
+      navigate('/');
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Still clear storage and redirect even if API fails
+      localStorage.removeItem('user');
+      sessionStorage.clear();
+      navigate('/');
+    }
+  };
+
+  const getDatabaseIcon = (type: string) => {
+    switch (type) {
+      case 'mysql':
+        return '🐬';
+      case 'postgresql':
+        return '🐘';
+      case 'mongodb':
+        return '🍃';
+      default:
+        return '🗄️';
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -74,7 +169,7 @@ const ExplorePage = () => {
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || isLoading) return;
+    if (!inputValue.trim() || isLoading || !selectedDatabase) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -87,77 +182,70 @@ const ExplorePage = () => {
     setInputValue('');
     setIsLoading(true);
 
-    // Simulate AI response
-    setTimeout(() => {
-      const aiResponse = generateAIResponse(inputValue);
+    try {
+      // Call the actual chat API
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      
+      const requestBody = {
+        message: inputValue,
+        sessionId: userData.sessionId || 'default-session',
+        connectionId: selectedDatabase
+      };
+
+      console.log('Sending chat request:', {
+        url: '/api/chat/database',
+        body: requestBody,
+        userId: userData.userId
+      });
+
+      const response = await fetch('/api/chat/database', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-ID': userData.userId || 'anonymous'
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      console.log('Chat response status:', response.status);
+      
+      const data = await response.json();
+      console.log('Chat response data:', data);
+
+      if (response.ok && !data.error) {
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          type: 'ai',
+          content: data.response,
+          timestamp: new Date(),
+          data: data.data,
+          visualization: data.metadata?.visualizationType || null,
+          query: data.query // Assuming the backend returns a 'query' field
+        };
+
+        setMessages(prev => [...prev, aiMessage]);
+      } else {
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          type: 'ai',
+          content: data.message || data.response || `Error: ${response.status} - ${response.statusText}`,
+          timestamp: new Date()
+        };
+
+        setMessages(prev => [...prev, aiMessage]);
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'ai',
-        content: aiResponse.content,
-        timestamp: new Date(),
-        data: aiResponse.data,
-        visualization: aiResponse.visualization
+        content: 'Sorry, I encountered an error while processing your request. Please try again.',
+        timestamp: new Date()
       };
 
       setMessages(prev => [...prev, aiMessage]);
+    } finally {
       setIsLoading(false);
-    }, 2000);
-  };
-
-  const generateAIResponse = (userInput: string) => {
-    const input = userInput.toLowerCase();
-    
-    if (input.includes('sales') || input.includes('revenue')) {
-      return {
-        content: "I found sales data in your database! Here's a summary of your revenue metrics:",
-        data: {
-          totalRevenue: 1250000,
-          monthlyGrowth: 12.5,
-          topProducts: ['Product A', 'Product B', 'Product C'],
-          revenueByMonth: [
-            { month: 'Jan', revenue: 95000 },
-            { month: 'Feb', revenue: 102000 },
-            { month: 'Mar', revenue: 118000 },
-            { month: 'Apr', revenue: 125000 }
-          ]
-        },
-        visualization: 'bar-chart'
-      };
-    } else if (input.includes('user') || input.includes('customer')) {
-      return {
-        content: "Here's what I found about your users:",
-        data: {
-          totalUsers: 15420,
-          activeUsers: 8920,
-          newUsersThisMonth: 1250,
-          userGrowth: 8.3,
-          topUserSegments: ['Premium', 'Standard', 'Basic']
-        },
-        visualization: 'pie-chart'
-      };
-    } else if (input.includes('product') || input.includes('inventory')) {
-      return {
-        content: "Here's your product inventory analysis:",
-        data: {
-          totalProducts: 1247,
-          lowStock: 23,
-          outOfStock: 5,
-          topSelling: ['Product X', 'Product Y', 'Product Z'],
-          categoryDistribution: [
-            { category: 'Electronics', count: 456 },
-            { category: 'Clothing', count: 234 },
-            { category: 'Home', count: 189 },
-            { category: 'Sports', count: 168 }
-          ]
-        },
-        visualization: 'table'
-      };
-    } else {
-      return {
-        content: "I understand you're asking about your data. I can help you explore sales, users, products, and more. Try asking specific questions like 'Show me sales data' or 'How many users do we have?'",
-        data: null,
-        visualization: null
-      };
     }
   };
 
@@ -172,6 +260,20 @@ const ExplorePage = () => {
     navigator.clipboard.writeText(text);
   };
 
+  const formatMessageContent = (content: string) => {
+    if (!content) return null;
+    
+    // Split content by newlines and create array of text and line breaks
+    const parts = content.split('\n');
+    
+    return parts.map((part, index) => (
+      <React.Fragment key={index}>
+        {part}
+        {index < parts.length - 1 && <br />}
+      </React.Fragment>
+    ));
+  };
+
   const renderVisualization = (data: any, type: string) => {
     if (!data) return null;
 
@@ -181,22 +283,7 @@ const ExplorePage = () => {
           <div className="card" style={{ marginTop: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
               <BarChart3 size={20} color="var(--primary-purple)" />
-              <h4 style={{ fontWeight: 'var(--font-weight-semibold)' }}>Revenue Analysis</h4>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'end', gap: '8px', height: '120px' }}>
-              {data.revenueByMonth?.map((item: any, index: number) => (
-                <div key={index} style={{ flex: 1, textAlign: 'center' }}>
-                  <div style={{
-                    height: `${(item.revenue / 125000) * 100}px`,
-                    background: 'var(--gradient-primary)',
-                    borderRadius: '4px 4px 0 0',
-                    marginBottom: '8px'
-                  }} />
-                  <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--neutral-gray)' }}>
-                    {item.month}
-                  </span>
-                </div>
-              ))}
+              <h4 style={{ fontWeight: 'var(--font-weight-semibold)' }}>Data Analysis</h4>
             </div>
             <div style={{ 
               display: 'grid', 
@@ -204,18 +291,61 @@ const ExplorePage = () => {
               gap: '16px',
               marginTop: '16px'
             }}>
-              <div>
-                <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--neutral-gray)' }}>Total Revenue</p>
-                <p style={{ fontSize: 'var(--font-size-lg)', fontWeight: 'var(--font-weight-bold)' }}>
-                  ${data.totalRevenue?.toLocaleString()}
-                </p>
-              </div>
-              <div>
-                <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--neutral-gray)' }}>Growth</p>
-                <p style={{ fontSize: 'var(--font-size-lg)', fontWeight: 'var(--font-weight-bold)', color: 'var(--semantic-success)' }}>
-                  +{data.monthlyGrowth}%
-                </p>
-              </div>
+              {data.columnNames && data.rows && data.rows.length > 0 && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--neutral-gray)', marginBottom: '8px' }}>
+                    Query Results ({data.rows.length} rows)
+                  </p>
+                  <div style={{ 
+                    maxHeight: '200px', 
+                    overflowY: 'auto',
+                    border: '1px solid var(--neutral-light-gray)',
+                    borderRadius: 'var(--border-radius-md)'
+                  }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead style={{ background: 'var(--neutral-light-gray)' }}>
+                        <tr>
+                          {data.columnNames.map((col: string, index: number) => (
+                            <th key={index} style={{ 
+                              padding: '8px 12px', 
+                              textAlign: 'left',
+                              fontSize: 'var(--font-size-sm)',
+                              fontWeight: 'var(--font-weight-medium)'
+                            }}>
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.rows.slice(0, 10).map((row: any[], rowIndex: number) => (
+                          <tr key={rowIndex} style={{ borderBottom: '1px solid var(--neutral-light-gray)' }}>
+                            {row.map((cell: any, cellIndex: number) => (
+                              <td key={cellIndex} style={{ 
+                                padding: '8px 12px',
+                                fontSize: 'var(--font-size-sm)'
+                              }}>
+                                {cell !== null && cell !== undefined ? String(cell) : 'NULL'}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {data.rows.length > 10 && (
+                      <div style={{ 
+                        padding: '8px 12px', 
+                        background: 'var(--neutral-light-gray)',
+                        fontSize: 'var(--font-size-sm)',
+                        color: 'var(--neutral-gray)',
+                        textAlign: 'center'
+                      }}>
+                        Showing first 10 rows of {data.rows.length} total rows
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -225,31 +355,68 @@ const ExplorePage = () => {
           <div className="card" style={{ marginTop: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
               <PieChart size={20} color="var(--secondary-blue)" />
-              <h4 style={{ fontWeight: 'var(--font-weight-semibold)' }}>User Analytics</h4>
+              <h4 style={{ fontWeight: 'var(--font-weight-semibold)' }}>Data Analysis</h4>
             </div>
             <div style={{ 
               display: 'grid', 
               gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
               gap: '16px'
             }}>
-              <div>
-                <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--neutral-gray)' }}>Total Users</p>
-                <p style={{ fontSize: 'var(--font-size-lg)', fontWeight: 'var(--font-weight-bold)' }}>
-                  {data.totalUsers?.toLocaleString()}
-                </p>
-              </div>
-              <div>
-                <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--neutral-gray)' }}>Active Users</p>
-                <p style={{ fontSize: 'var(--font-size-lg)', fontWeight: 'var(--font-weight-bold)' }}>
-                  {data.activeUsers?.toLocaleString()}
-                </p>
-              </div>
-              <div>
-                <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--neutral-gray)' }}>New This Month</p>
-                <p style={{ fontSize: 'var(--font-size-lg)', fontWeight: 'var(--font-weight-bold)', color: 'var(--semantic-success)' }}>
-                  +{data.newUsersThisMonth?.toLocaleString()}
-                </p>
-              </div>
+              {data.columnNames && data.rows && data.rows.length > 0 && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--neutral-gray)', marginBottom: '8px' }}>
+                    Query Results ({data.rows.length} rows)
+                  </p>
+                  <div style={{ 
+                    maxHeight: '200px', 
+                    overflowY: 'auto',
+                    border: '1px solid var(--neutral-light-gray)',
+                    borderRadius: 'var(--border-radius-md)'
+                  }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead style={{ background: 'var(--neutral-light-gray)' }}>
+                        <tr>
+                          {data.columnNames.map((col: string, index: number) => (
+                            <th key={index} style={{ 
+                              padding: '8px 12px', 
+                              textAlign: 'left',
+                              fontSize: 'var(--font-size-sm)',
+                              fontWeight: 'var(--font-weight-medium)'
+                            }}>
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.rows.slice(0, 10).map((row: any[], rowIndex: number) => (
+                          <tr key={rowIndex} style={{ borderBottom: '1px solid var(--neutral-light-gray)' }}>
+                            {row.map((cell: any, cellIndex: number) => (
+                              <td key={cellIndex} style={{ 
+                                padding: '8px 12px',
+                                fontSize: 'var(--font-size-sm)'
+                              }}>
+                                {cell !== null && cell !== undefined ? String(cell) : 'NULL'}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {data.rows.length > 10 && (
+                      <div style={{ 
+                        padding: '8px 12px', 
+                        background: 'var(--neutral-light-gray)',
+                        fontSize: 'var(--font-size-sm)',
+                        color: 'var(--neutral-gray)',
+                        textAlign: 'center'
+                      }}>
+                        Showing first 10 rows of {data.rows.length} total rows
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -259,31 +426,68 @@ const ExplorePage = () => {
           <div className="card" style={{ marginTop: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
               <Table size={20} color="var(--secondary-pink)" />
-              <h4 style={{ fontWeight: 'var(--font-weight-semibold)' }}>Product Inventory</h4>
+              <h4 style={{ fontWeight: 'var(--font-weight-semibold)' }}>Data Analysis</h4>
             </div>
             <div style={{ 
               display: 'grid', 
               gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
               gap: '16px'
             }}>
-              <div>
-                <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--neutral-gray)' }}>Total Products</p>
-                <p style={{ fontSize: 'var(--font-size-lg)', fontWeight: 'var(--font-weight-bold)' }}>
-                  {data.totalProducts?.toLocaleString()}
-                </p>
-              </div>
-              <div>
-                <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--neutral-gray)' }}>Low Stock</p>
-                <p style={{ fontSize: 'var(--font-size-lg)', fontWeight: 'var(--font-weight-bold)', color: 'var(--semantic-warning)' }}>
-                  {data.lowStock}
-                </p>
-              </div>
-              <div>
-                <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--neutral-gray)' }}>Out of Stock</p>
-                <p style={{ fontSize: 'var(--font-size-lg)', fontWeight: 'var(--font-weight-bold)', color: 'var(--semantic-error)' }}>
-                  {data.outOfStock}
-                </p>
-              </div>
+              {data.columnNames && data.rows && data.rows.length > 0 && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--neutral-gray)', marginBottom: '8px' }}>
+                    Query Results ({data.rows.length} rows)
+                  </p>
+                  <div style={{ 
+                    maxHeight: '200px', 
+                    overflowY: 'auto',
+                    border: '1px solid var(--neutral-light-gray)',
+                    borderRadius: 'var(--border-radius-md)'
+                  }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead style={{ background: 'var(--neutral-light-gray)' }}>
+                        <tr>
+                          {data.columnNames.map((col: string, index: number) => (
+                            <th key={index} style={{ 
+                              padding: '8px 12px', 
+                              textAlign: 'left',
+                              fontSize: 'var(--font-size-sm)',
+                              fontWeight: 'var(--font-weight-medium)'
+                            }}>
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.rows.slice(0, 10).map((row: any[], rowIndex: number) => (
+                          <tr key={rowIndex} style={{ borderBottom: '1px solid var(--neutral-light-gray)' }}>
+                            {row.map((cell: any, cellIndex: number) => (
+                              <td key={cellIndex} style={{ 
+                                padding: '8px 12px',
+                                fontSize: 'var(--font-size-sm)'
+                              }}>
+                                {cell !== null && cell !== undefined ? String(cell) : 'NULL'}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {data.rows.length > 10 && (
+                      <div style={{ 
+                        padding: '8px 12px', 
+                        background: 'var(--neutral-light-gray)',
+                        fontSize: 'var(--font-size-sm)',
+                        color: 'var(--neutral-gray)',
+                        textAlign: 'center'
+                      }}>
+                        Showing first 10 rows of {data.rows.length} total rows
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -304,9 +508,26 @@ const ExplorePage = () => {
           </Link>
           <ul className="nav-menu">
             <li><Link to="/" className="nav-menu-item">Home</Link></li>
-            <li><Link to="/dashboard" className="nav-menu-item">Dashboard</Link></li>
-            <li><Link to="/explore" className="nav-menu-item" style={{ color: 'var(--primary-purple)' }}>Explore</Link></li>
-            <li><Link to="/login" className="nav-menu-item">Login</Link></li>
+            {user && <li><Link to="/dashboard" className="nav-menu-item">Dashboard</Link></li>}
+            {user ? (
+              <li>
+                <button 
+                  onClick={handleLogout}
+                  className="btn btn-ghost"
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px',
+                    color: 'var(--semantic-error)'
+                  }}
+                >
+                  <LogOut size={16} />
+                  Logout
+                </button>
+              </li>
+            ) : (
+              <li><Link to="/login" className="nav-menu-item">Login</Link></li>
+            )}
           </ul>
         </div>
       </nav>
@@ -316,13 +537,16 @@ const ExplorePage = () => {
           display: 'grid', 
           gridTemplateColumns: '1fr 300px',
           gap: '32px',
-          height: 'calc(100vh - 200px)'
+          height: 'calc(100vh - 200px)',
+          maxHeight: 'calc(100vh - 200px)'
         }}>
           {/* Chat Interface */}
           <div className="card" style={{ 
             display: 'flex', 
             flexDirection: 'column',
-            height: '100%'
+            height: '100%',
+            maxHeight: '100%',
+            overflow: 'hidden'
           }}>
             <div style={{ 
               display: 'flex', 
@@ -330,7 +554,8 @@ const ExplorePage = () => {
               gap: '12px',
               paddingBottom: '16px',
               borderBottom: '1px solid var(--neutral-light-gray)',
-              marginBottom: '16px'
+              marginBottom: '16px',
+              flexShrink: 0
             }}>
               <div style={{ 
                 width: '40px', 
@@ -355,7 +580,7 @@ const ExplorePage = () => {
                   fontSize: 'var(--font-size-sm)', 
                   color: 'var(--neutral-gray)'
                 }}>
-                  Ask questions about your data
+                  {selectedDatabase ? `Connected to: ${connections.find(c => c.id === selectedDatabase)?.name || 'Unknown Database'}` : 'Select a database to start chatting'}
                 </p>
               </div>
             </div>
@@ -364,14 +589,16 @@ const ExplorePage = () => {
             <div style={{ 
               flex: 1, 
               overflowY: 'auto',
-              paddingRight: '8px'
+              paddingRight: '8px',
+              minHeight: 0
             }}>
               {messages.map((message) => (
                 <div key={message.id} style={{ marginBottom: '24px' }}>
                   <div style={{ 
                     display: 'flex', 
                     gap: '12px',
-                    alignItems: message.type === 'user' ? 'flex-end' : 'flex-start'
+                    alignItems: 'flex-end',
+                    justifyContent: message.type === 'user' ? 'flex-end' : 'flex-start'
                   }}>
                     {message.type === 'ai' && (
                       <div style={{ 
@@ -394,13 +621,28 @@ const ExplorePage = () => {
                       padding: '12px 16px',
                       borderRadius: message.type === 'user' ? 'var(--border-radius-lg) 0 var(--border-radius-lg) var(--border-radius-lg)' : '0 var(--border-radius-lg) var(--border-radius-lg) var(--border-radius-lg)',
                       border: message.type === 'ai' ? '1px solid var(--neutral-light-gray)' : 'none',
-                      boxShadow: message.type === 'ai' ? 'var(--shadow-sm)' : 'none'
+                      boxShadow: message.type === 'ai' ? 'var(--shadow-sm)' : 'none',
+                      marginLeft: message.type === 'user' ? 'auto' : '0'
                     }}>
+                      {message.type === 'ai' && message.query && (
+                        <div style={{ 
+                          fontSize: 'var(--font-size-sm)', 
+                          color: '#6b7280', // Dark grey but lighter than regular text
+                          marginBottom: '8px',
+                          fontFamily: 'monospace',
+                          backgroundColor: '#f9fafb',
+                          padding: '6px 8px',
+                          borderRadius: 'var(--border-radius-sm)',
+                          border: '1px solid #e5e7eb'
+                        }}>
+                          {formatMessageContent(message.query)}
+                        </div>
+                      )}
                       <p style={{ 
                         lineHeight: 'var(--line-height-relaxed)',
                         marginBottom: message.data ? '12px' : '0'
                       }}>
-                        {message.content}
+                        {formatMessageContent(message.content)}
                       </p>
                       {message.data && renderVisualization(message.data, message.visualization)}
                     </div>
@@ -469,14 +711,16 @@ const ExplorePage = () => {
             {/* Input */}
             <div style={{ 
               borderTop: '1px solid var(--neutral-light-gray)',
-              paddingTop: '16px'
+              paddingTop: '16px',
+              flexShrink: 0
             }}>
               <div style={{ display: 'flex', gap: '12px' }}>
                 <textarea
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="Ask a question about your data..."
+                  placeholder={selectedDatabase ? "Ask a question about your data..." : "Select a database to start chatting..."}
+                  disabled={!selectedDatabase}
                   style={{
                     flex: 1,
                     padding: '12px 16px',
@@ -487,17 +731,19 @@ const ExplorePage = () => {
                     resize: 'none',
                     minHeight: '48px',
                     maxHeight: '120px',
-                    lineHeight: 'var(--line-height-normal)'
+                    lineHeight: 'var(--line-height-normal)',
+                    opacity: selectedDatabase ? 1 : 0.6
                   }}
                 />
                 <button
                   onClick={handleSendMessage}
-                  disabled={!inputValue.trim() || isLoading}
+                  disabled={!inputValue.trim() || isLoading || !selectedDatabase}
                   className="btn btn-primary"
                   style={{ 
                     alignSelf: 'flex-end',
                     padding: '12px',
-                    minWidth: '48px'
+                    minWidth: '48px',
+                    opacity: selectedDatabase ? 1 : 0.6
                   }}
                 >
                   <Send size={20} />
@@ -507,7 +753,14 @@ const ExplorePage = () => {
           </div>
 
           {/* Sidebar */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '24px',
+            height: '100%',
+            maxHeight: '100%',
+            overflowY: 'auto'
+          }}>
             {/* Database Selector */}
             <div className="card">
               <h3 style={{ 
@@ -518,66 +771,70 @@ const ExplorePage = () => {
                 Connected Databases
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {databases.map((db) => (
-                  <button
-                    key={db.id}
-                    onClick={() => setSelectedDatabase(db.id)}
-                    style={{
-                      padding: '12px',
-                      border: selectedDatabase === db.id ? '2px solid var(--primary-purple)' : '1px solid var(--neutral-light-gray)',
-                      borderRadius: 'var(--border-radius-lg)',
-                      background: selectedDatabase === db.id ? 'var(--primary-purple)' : 'transparent',
-                      color: selectedDatabase === db.id ? 'white' : 'var(--neutral-dark)',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      transition: 'all var(--transition-normal) var(--easing-default)'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                      <Database size={16} />
-                      <span style={{ fontWeight: 'var(--font-weight-medium)' }}>{db.name}</span>
-                    </div>
-                    <div style={{ fontSize: 'var(--font-size-sm)', opacity: 0.8 }}>
-                      {db.tables.length} tables • {db.type}
-                    </div>
-                  </button>
-                ))}
+                {isLoadingConnections ? (
+                  <div style={{ 
+                    textAlign: 'center', 
+                    padding: '20px',
+                    color: 'var(--neutral-gray)'
+                  }}>
+                    <Loader2 size={20} className="animate-spin" style={{ marginBottom: '8px' }} />
+                    <p style={{ fontSize: 'var(--font-size-sm)' }}>Loading connections...</p>
+                  </div>
+                ) : connections.length === 0 ? (
+                  <div style={{ 
+                    textAlign: 'center', 
+                    padding: '20px',
+                    color: 'var(--neutral-gray)'
+                  }}>
+                    <Database size={32} style={{ marginBottom: '8px', opacity: 0.5 }} />
+                    <p style={{ fontSize: 'var(--font-size-sm)', marginBottom: '8px' }}>
+                      No database connections
+                    </p>
+                    <Link 
+                      to="/dashboard" 
+                      className="btn btn-primary"
+                      style={{ fontSize: 'var(--font-size-sm)', padding: '8px 16px' }}
+                    >
+                      Add Connection
+                    </Link>
+                  </div>
+                ) : (
+                  connections.map((db) => (
+                    <button
+                      key={db.id}
+                      onClick={() => setSelectedDatabase(db.id)}
+                      style={{
+                        padding: '12px',
+                        border: selectedDatabase === db.id ? '2px solid var(--primary-purple)' : '1px solid var(--neutral-light-gray)',
+                        borderRadius: 'var(--border-radius-lg)',
+                        background: selectedDatabase === db.id ? 'var(--primary-purple)' : 'transparent',
+                        color: selectedDatabase === db.id ? 'white' : 'var(--neutral-dark)',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        transition: 'all var(--transition-normal) var(--easing-default)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <span style={{ fontSize: '16px' }}>{getDatabaseIcon(db.type)}</span>
+                        <span style={{ fontWeight: 'var(--font-weight-medium)' }}>{db.name}</span>
+                      </div>
+                      <div style={{ fontSize: 'var(--font-size-sm)', opacity: 0.8 }}>
+                        {db.host}:{db.port} • {db.type}
+                      </div>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
 
-            {/* Quick Actions */}
+            {/* Try Asking */}
             <div className="card">
               <h3 style={{ 
                 fontSize: 'var(--font-size-lg)', 
                 fontWeight: 'var(--font-weight-semibold)',
                 marginBottom: '16px'
               }}>
-                Quick Actions
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <button className="btn btn-ghost" style={{ justifyContent: 'flex-start', padding: '8px 12px' }}>
-                  <BarChart3 size={16} />
-                  <span>Generate Report</span>
-                </button>
-                <button className="btn btn-ghost" style={{ justifyContent: 'flex-start', padding: '8px 12px' }}>
-                  <Download size={16} />
-                  <span>Export Data</span>
-                </button>
-                <button className="btn btn-ghost" style={{ justifyContent: 'flex-start', padding: '8px 12px' }}>
-                  <Share2 size={16} />
-                  <span>Share Insights</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Recent Queries */}
-            <div className="card">
-              <h3 style={{ 
-                fontSize: 'var(--font-size-lg)', 
-                fontWeight: 'var(--font-weight-semibold)',
-                marginBottom: '16px'
-              }}>
-                Recent Queries
+                Try Asking
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ 
@@ -586,7 +843,7 @@ const ExplorePage = () => {
                   borderRadius: 'var(--border-radius-md)',
                   fontSize: 'var(--font-size-sm)'
                 }}>
-                  "Show me sales data"
+                  "What is the database name of the connected database?"
                 </div>
                 <div style={{ 
                   padding: '8px 12px',
@@ -594,7 +851,7 @@ const ExplorePage = () => {
                   borderRadius: 'var(--border-radius-md)',
                   fontSize: 'var(--font-size-sm)'
                 }}>
-                  "How many users do we have?"
+                  "List down all the tables in the pizza_shop schema"
                 </div>
                 <div style={{ 
                   padding: '8px 12px',
@@ -602,7 +859,7 @@ const ExplorePage = () => {
                   borderRadius: 'var(--border-radius-md)',
                   fontSize: 'var(--font-size-sm)'
                 }}>
-                  "Product inventory status"
+                  "Get me all the payments of more that 20 from the payment table"
                 </div>
               </div>
             </div>

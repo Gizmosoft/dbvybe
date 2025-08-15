@@ -12,6 +12,7 @@ import io.qdrant.client.grpc.JsonWithInt;
 import com.google.common.util.concurrent.ListenableFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -21,6 +22,9 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.time.LocalDateTime;
+import com.dbVybe.app.service.UserDatabaseConnectionService;
+import com.dbVybe.app.domain.model.UserDatabaseConnection;
+import com.dbVybe.app.service.ActorServiceLocator;
 
 /**
  * Database Schema Agent - Analyzes database schemas and creates vector embeddings
@@ -29,6 +33,7 @@ import java.time.LocalDateTime;
  * - Connects to user databases and analyzes their schema structure
  * - Generates vector embeddings for tables, columns, and relationships
  * - Stores embeddings in Qdrant vector database for semantic search
+ * - Stores relationships in Neo4j graph database for relationship analysis
  * - Provides schema insights and recommendations
  */
 @Service
@@ -50,10 +55,15 @@ public class DatabaseSchemaAgent {
     private EmbeddingModel embeddingModel;
     private QdrantClient qdrantClient;
     
+    // Graph Analysis Agent for Neo4j integration
+    @Autowired
+    private GraphAnalysisAgent graphAnalysisAgent;
+    
     // Schema Analysis Statistics
     private long totalSchemasAnalyzed = 0;
     private long totalTablesProcessed = 0;
     private long totalEmbeddingsGenerated = 0;
+    private long totalRelationshipsStored = 0;
     
     @PostConstruct
     public void initialize() {
@@ -65,14 +75,20 @@ public class DatabaseSchemaAgent {
             
             // Initialize Qdrant client
             if (qdrantApiKey != null && !qdrantApiKey.trim().isEmpty()) {
-                this.qdrantClient = new QdrantClient(
-                    QdrantGrpcClient.newBuilder(qdrantUrl, 6334, true)
-                        .withApiKey(qdrantApiKey)
-                        .build()
-                );
-                
-                // Ensure collection exists
-                ensureCollectionExists();
+                try {
+                    this.qdrantClient = new QdrantClient(
+                        QdrantGrpcClient.newBuilder(qdrantUrl, 6334, true)
+                            .withApiKey(qdrantApiKey)
+                            .build()
+                    );
+                    
+                    // Ensure collection exists
+                    ensureCollectionExists();
+                    logger.info("Qdrant client initialized successfully with host: {}", qdrantUrl);
+                } catch (Exception e) {
+                    logger.warn("Failed to initialize Qdrant client: {}. Schema analysis will work but embeddings won't be stored.", e.getMessage());
+                    this.qdrantClient = null;
+                }
             } else {
                 logger.warn("Qdrant API key not configured. Schema analysis will work but embeddings won't be stored.");
             }
@@ -100,15 +116,44 @@ public class DatabaseSchemaAgent {
                 logger.info("Starting schema analysis for connection {} (user: {}, type: {})", 
                     connectionId, userId, databaseType);
                 
-                // Extract schema information based on database type
-                SchemaInfo schemaInfo = extractSchemaInfo(connection, databaseType);
+                SchemaInfo schemaInfo;
+                
+                // Handle different database types
+                if (databaseType == DatabaseType.MONGODB) {
+                    // For MongoDB, we need to analyze collections instead of tables
+                    schemaInfo = extractMongoDBSchemaInfo(connectionId, userId);
+                } else {
+                    // For SQL databases (PostgreSQL, MySQL), use existing JDBC-based analysis
+                    schemaInfo = extractSchemaInfo(connection, databaseType);
+                }
                 
                 // Generate embeddings for schema components
                 List<SchemaEmbedding> embeddings = generateSchemaEmbeddings(schemaInfo, connectionId, userId);
                 
                 // Store embeddings in Qdrant
-                if (qdrantClient != null) {
+                if (qdrantClient != null && !embeddings.isEmpty()) {
                     storeEmbeddings(embeddings);
+                }
+                
+                // Store relationships in Neo4j
+                if (graphAnalysisAgent != null) {
+                    List<GraphAnalysisAgent.TableRelationship> relationships = convertSchemaToRelationships(schemaInfo);
+                    CompletableFuture<GraphAnalysisAgent.GraphStorageResult> graphResult = 
+                        graphAnalysisAgent.storeSchemaRelationships(connectionId, userId, databaseType, relationships);
+                    
+                    try {
+                        GraphAnalysisAgent.GraphStorageResult result = graphResult.get();
+                        if (result.isSuccess()) {
+                            totalRelationshipsStored += result.getRelationshipsStored();
+                            logger.info("Successfully stored {} relationships in Neo4j for connection {}", 
+                                result.getRelationshipsStored(), connectionId);
+                        } else {
+                            logger.warn("Failed to store relationships in Neo4j for connection {}: {}", 
+                                connectionId, result.getError());
+                        }
+                    } catch (Exception e) {
+                        logger.warn("Error storing relationships in Neo4j for connection {}: {}", connectionId, e.getMessage());
+                    }
                 }
                 
                 // Update statistics
@@ -118,8 +163,8 @@ public class DatabaseSchemaAgent {
                 
                 long processingTime = System.currentTimeMillis() - startTime;
                 
-                logger.info("Schema analysis completed for connection {} in {}ms. Tables: {}, Embeddings: {}", 
-                    connectionId, processingTime, schemaInfo.getTables().size(), embeddings.size());
+                logger.info("Schema analysis completed for connection {} in {}ms. Tables: {}, Embeddings: {}, Relationships: {}", 
+                    connectionId, processingTime, schemaInfo.getTables().size(), embeddings.size(), totalRelationshipsStored);
                 
                 return new SchemaAnalysisResult(
                     connectionId,
@@ -133,7 +178,6 @@ public class DatabaseSchemaAgent {
                 );
                 
             } catch (Exception e) {
-                long processingTime = System.currentTimeMillis() - startTime;
                 logger.error("Schema analysis failed for connection {}: {}", connectionId, e.getMessage(), e);
                 
                 return new SchemaAnalysisResult(
@@ -144,7 +188,7 @@ public class DatabaseSchemaAgent {
                     0,
                     false,
                     e.getMessage(),
-                    processingTime
+                    System.currentTimeMillis() - startTime
                 );
             }
         });
@@ -154,6 +198,13 @@ public class DatabaseSchemaAgent {
      * Search for similar schemas using vector similarity
      */
     public CompletableFuture<List<SimilarSchema>> findSimilarSchemas(String query, int limit) {
+        return findSimilarSchemas(query, limit, null);
+    }
+    
+    /**
+     * Search for similar schemas using vector similarity with connection filter
+     */
+    public CompletableFuture<List<SimilarSchema>> findSimilarSchemas(String query, int limit, String connectionId) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 if (qdrantClient == null) {
@@ -168,7 +219,7 @@ public class DatabaseSchemaAgent {
                 SearchPoints searchRequest = SearchPoints.newBuilder()
                     .setCollectionName(collectionName)
                     .addAllVector(queryEmbedding.vectorAsList())
-                    .setLimit(limit)
+                    .setLimit(limit * 2) // Get more results to filter by connectionId
                     .setWithPayload(WithPayloadSelector.newBuilder().setEnable(true).build())
                     .build();
                 
@@ -180,17 +231,30 @@ public class DatabaseSchemaAgent {
                     @SuppressWarnings("deprecation")
                     Map<String, JsonWithInt.Value> payload = point.getPayload();
                     
+                    String pointConnectionId = getStringFromValue(payload.get("connectionId"));
+                    
+                    // Filter by connectionId if specified
+                    if (connectionId != null && !connectionId.equals(pointConnectionId)) {
+                        continue;
+                    }
+                    
                     SimilarSchema schema = new SimilarSchema(
-                        getStringFromValue(payload.get("connectionId")),
+                        pointConnectionId,
                         getStringFromValue(payload.get("userId")),
                         getStringFromValue(payload.get("tableName")),
                         getStringFromValue(payload.get("description")),
                         point.getScore()
                     );
                     results.add(schema);
+                    
+                    // Stop if we have enough results
+                    if (results.size() >= limit) {
+                        break;
+                    }
                 }
                 
-                logger.info("Found {} similar schemas for query: {}", results.size(), query);
+                logger.info("Found {} similar schemas for query: {} (connectionId: {})", 
+                    results.size(), query, connectionId);
                 return results;
                 
             } catch (Exception e) {
@@ -206,59 +270,86 @@ public class DatabaseSchemaAgent {
     public CompletableFuture<Boolean> deleteSchemaEmbeddings(String connectionId, String userId) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                if (qdrantClient == null) {
-                    logger.warn("Qdrant client not available. Cannot delete schema embeddings for connection: {}", connectionId);
-                    return false;
-                }
+                boolean qdrantDeleted = true;
+                boolean neo4jDeleted = true;
                 
-                logger.info("Deleting schema embeddings for connection {} (user: {})", connectionId, userId);
-                
-                // For now, use a simple approach - search for points and then delete by IDs
-                // This is a workaround for complex filter API issues
-                SearchPoints searchRequest = SearchPoints.newBuilder()
-                    .setCollectionName(collectionName)
-                    .addAllVector(Collections.nCopies(384, 0.0f)) // Dummy vector for search
-                    .setLimit(10000) // Large limit to get all points
-                    .setWithPayload(WithPayloadSelector.newBuilder().setEnable(true).build())
-                    .build();
-                
-                ListenableFuture<List<ScoredPoint>> searchFuture = qdrantClient.searchAsync(searchRequest);
-                List<ScoredPoint> allPoints = searchFuture.get();
-                
-                // Filter points that match our connectionId and userId
-                List<PointId> pointsToDelete = new ArrayList<>();
-                for (ScoredPoint point : allPoints) {
-                    @SuppressWarnings("deprecation")
-                    Map<String, JsonWithInt.Value> payload = point.getPayload();
+                // Delete from Qdrant
+                if (qdrantClient != null) {
+                    logger.info("Deleting schema embeddings from Qdrant for connection {} (user: {})", connectionId, userId);
                     
-                    String pointConnectionId = getStringFromValue(payload.get("connectionId"));
-                    String pointUserId = getStringFromValue(payload.get("userId"));
-                    
-                    if (connectionId.equals(pointConnectionId) && userId.equals(pointUserId)) {
-                        pointsToDelete.add(point.getId());
-                    }
-                }
-                
-                if (!pointsToDelete.isEmpty()) {
-                    // Delete the matched points
-                    DeletePoints deleteRequest = DeletePoints.newBuilder()
+                    // For now, use a simple approach - search for points and then delete by IDs
+                    // This is a workaround for complex filter API issues
+                    SearchPoints searchRequest = SearchPoints.newBuilder()
                         .setCollectionName(collectionName)
-                        .setPoints(PointsSelector.newBuilder().setPoints(PointsIdsList.newBuilder().addAllIds(pointsToDelete).build()).build())
+                        .addAllVector(Collections.nCopies(384, 0.0f)) // Dummy vector for search
+                        .setLimit(10000) // Large limit to get all points
+                        .setWithPayload(WithPayloadSelector.newBuilder().setEnable(true).build())
                         .build();
                     
-                    ListenableFuture<UpdateResult> deleteFuture = qdrantClient.deleteAsync(deleteRequest);
-                    deleteFuture.get(); // Wait for completion
+                    ListenableFuture<List<ScoredPoint>> searchFuture = qdrantClient.searchAsync(searchRequest);
+                    List<ScoredPoint> allPoints = searchFuture.get();
                     
-                    logger.info("Successfully deleted {} schema embeddings for connection {} (user: {})", 
-                        pointsToDelete.size(), connectionId, userId);
+                    // Filter points that match our connectionId and userId
+                    List<PointId> pointsToDelete = new ArrayList<>();
+                    for (ScoredPoint point : allPoints) {
+                        @SuppressWarnings("deprecation")
+                        Map<String, JsonWithInt.Value> payload = point.getPayload();
+                        
+                        String pointConnectionId = getStringFromValue(payload.get("connectionId"));
+                        String pointUserId = getStringFromValue(payload.get("userId"));
+                        
+                        if (connectionId.equals(pointConnectionId) && userId.equals(pointUserId)) {
+                            pointsToDelete.add(point.getId());
+                        }
+                    }
+                    
+                    if (!pointsToDelete.isEmpty()) {
+                        // Delete the matched points
+                        DeletePoints deleteRequest = DeletePoints.newBuilder()
+                            .setCollectionName(collectionName)
+                            .setPoints(PointsSelector.newBuilder().setPoints(PointsIdsList.newBuilder().addAllIds(pointsToDelete).build()).build())
+                            .build();
+                        
+                        ListenableFuture<UpdateResult> deleteFuture = qdrantClient.deleteAsync(deleteRequest);
+                        deleteFuture.get(); // Wait for completion
+                        
+                        logger.info("Successfully deleted {} schema embeddings from Qdrant for connection {} (user: {})", 
+                            pointsToDelete.size(), connectionId, userId);
+                    } else {
+                        logger.info("No schema embeddings found in Qdrant for connection {} (user: {})", connectionId, userId);
+                    }
                 } else {
-                    logger.info("No schema embeddings found for connection {} (user: {})", connectionId, userId);
+                    logger.warn("Qdrant client not available. Cannot delete schema embeddings for connection: {}", connectionId);
+                    qdrantDeleted = false;
                 }
                 
-                return true;
+                // Delete from Neo4j
+                if (graphAnalysisAgent != null) {
+                    logger.info("Deleting graph relationships from Neo4j for connection {} (user: {})", connectionId, userId);
+                    
+                    try {
+                        CompletableFuture<Boolean> neo4jResult = graphAnalysisAgent.deleteConnectionGraphData(connectionId, userId);
+                        neo4jDeleted = neo4jResult.get();
+                        
+                        if (neo4jDeleted) {
+                            logger.info("Successfully deleted graph relationships from Neo4j for connection {} (user: {})", connectionId, userId);
+                        } else {
+                            logger.warn("Failed to delete graph relationships from Neo4j for connection {} (user: {})", connectionId, userId);
+                        }
+                    } catch (Exception e) {
+                        logger.warn("Error deleting graph relationships from Neo4j for connection {} (user: {}): {}", 
+                            connectionId, userId, e.getMessage());
+                        neo4jDeleted = false;
+                    }
+                } else {
+                    logger.warn("GraphAnalysisAgent not available. Cannot delete graph relationships for connection: {}", connectionId);
+                    neo4jDeleted = false;
+                }
+                
+                return qdrantDeleted && neo4jDeleted;
                 
             } catch (Exception e) {
-                logger.error("Error deleting schema embeddings for connection {} (user: {}): {}", 
+                logger.error("Error deleting schema data for connection {} (user: {}): {}", 
                     connectionId, userId, e.getMessage(), e);
                 return false;
             }
@@ -273,6 +364,7 @@ public class DatabaseSchemaAgent {
             totalSchemasAnalyzed,
             totalTablesProcessed,
             totalEmbeddingsGenerated,
+            totalRelationshipsStored,
             qdrantClient != null
         );
     }
@@ -281,6 +373,10 @@ public class DatabaseSchemaAgent {
      * Extract schema information from database connection
      */
     private SchemaInfo extractSchemaInfo(Connection connection, DatabaseType databaseType) throws SQLException {
+        if (connection == null) {
+            throw new SQLException("Database connection is null");
+        }
+        
         DatabaseMetaData metaData = connection.getMetaData();
         List<TableInfo> tables = new ArrayList<>();
         
@@ -476,6 +572,12 @@ public class DatabaseSchemaAgent {
             
         } catch (Exception e) {
             // Collection doesn't exist, create it
+            if (e.getMessage() != null && e.getMessage().contains("doesn't exist")) {
+                logger.info("Qdrant collection '{}' not found, creating it...", collectionName);
+            } else {
+                logger.warn("Error checking Qdrant collection '{}': {}. Attempting to create...", collectionName, e.getMessage());
+            }
+            
             try {
                 CreateCollection createRequest = CreateCollection.newBuilder()
                     .setCollectionName(collectionName)
@@ -490,12 +592,248 @@ public class DatabaseSchemaAgent {
                 ListenableFuture<io.qdrant.client.grpc.Collections.CollectionOperationResponse> createFuture = qdrantClient.createCollectionAsync(createRequest);
                 createFuture.get();
                 
-                logger.info("Created Qdrant collection: {}", collectionName);
+                logger.info("✅ Successfully created Qdrant collection: {}", collectionName);
                 
             } catch (Exception createException) {
-                logger.error("Failed to create Qdrant collection: {}", createException.getMessage(), createException);
+                logger.error("❌ Failed to create Qdrant collection '{}': {}", collectionName, createException.getMessage(), createException);
             }
         }
+    }
+    
+    /**
+     * Convert SchemaInfo to GraphAnalysisAgent.TableRelationship list
+     */
+    private List<GraphAnalysisAgent.TableRelationship> convertSchemaToRelationships(SchemaInfo schemaInfo) {
+        List<GraphAnalysisAgent.TableRelationship> relationships = new ArrayList<>();
+        
+        for (TableInfo table : schemaInfo.getTables()) {
+            for (ForeignKeyInfo fk : table.getForeignKeys()) {
+                // Find the target table info for better description
+                String targetDescription = "";
+                for (TableInfo targetTable : schemaInfo.getTables()) {
+                    if (targetTable.getTableName().equals(fk.getPkTableName())) {
+                        targetDescription = targetTable.getComment() != null ? targetTable.getComment() : "";
+                        break;
+                    }
+                }
+                
+                GraphAnalysisAgent.TableRelationship relationship = new GraphAnalysisAgent.TableRelationship(
+                    table.getTableName(),                    // sourceTable
+                    fk.getPkTableName(),                     // targetTable
+                    fk.getFkColumnName(),                    // sourceColumn
+                    fk.getPkColumnName(),                    // targetColumn
+                    "FOREIGN_KEY",                           // relationshipType
+                    table.getComment() != null ? table.getComment() : "",  // sourceDescription
+                    targetDescription                        // targetDescription
+                );
+                
+                relationships.add(relationship);
+            }
+        }
+        
+        logger.info("Converted {} foreign key relationships from schema", relationships.size());
+        return relationships;
+    }
+    
+    /**
+     * Extract MongoDB schema information from collections
+     */
+    private SchemaInfo extractMongoDBSchemaInfo(String connectionId, String userId) {
+        try {
+            // Get connection details to connect to MongoDB
+            UserDatabaseConnectionService connectionService = ActorServiceLocator.getUserDatabaseConnectionService();
+            if (connectionService == null) {
+                throw new RuntimeException("UserDatabaseConnectionService not available");
+            }
+            
+            Optional<UserDatabaseConnection> connectionOpt = 
+                connectionService.findUserDatabaseConnection(connectionId, userId);
+            
+            if (connectionOpt.isEmpty()) {
+                throw new RuntimeException("Database connection not found: " + connectionId);
+            }
+            
+            UserDatabaseConnection dbConnection = connectionOpt.get();
+            
+            // Create MongoDB connection
+            String connectionString = buildMongoDBConnectionString(dbConnection);
+            com.mongodb.client.MongoClient mongoClient = com.mongodb.client.MongoClients.create(connectionString);
+            com.mongodb.client.MongoDatabase database = mongoClient.getDatabase(dbConnection.getDatabaseName());
+            
+            try {
+                List<TableInfo> tables = new ArrayList<>();
+                
+                // Get all collections
+                for (String collectionName : database.listCollectionNames()) {
+                    com.mongodb.client.MongoCollection<org.bson.Document> collection = database.getCollection(collectionName);
+                    
+                    // Analyze collection structure by sampling documents
+                    List<ColumnInfo> columns = analyzeMongoDBCollection(collection);
+                    
+                    // For MongoDB, we'll create "relationships" based on common field names and references
+                    List<ForeignKeyInfo> foreignKeys = analyzeMongoDBRelationships(collection, collectionName);
+                    
+                    TableInfo tableInfo = new TableInfo(collectionName, "MongoDB Collection", columns, foreignKeys);
+                    tables.add(tableInfo);
+                }
+                
+                return new SchemaInfo(DatabaseType.MONGODB, tables);
+                
+            } finally {
+                mongoClient.close();
+            }
+            
+        } catch (Exception e) {
+            logger.error("Failed to extract MongoDB schema for connection {}: {}", connectionId, e.getMessage(), e);
+            throw new RuntimeException("Failed to extract MongoDB schema", e);
+        }
+    }
+    
+    /**
+     * Analyze MongoDB collection structure by sampling documents
+     */
+    private List<ColumnInfo> analyzeMongoDBCollection(com.mongodb.client.MongoCollection<org.bson.Document> collection) {
+        List<ColumnInfo> columns = new ArrayList<>();
+        
+        try {
+            // Sample a few documents to understand the structure
+            org.bson.Document sampleDoc = collection.find().first();
+            if (sampleDoc != null) {
+                analyzeDocumentFields(sampleDoc, "", columns);
+            }
+            
+            // Also check for common MongoDB fields
+            addCommonMongoDBFields(columns);
+            
+        } catch (Exception e) {
+            logger.warn("Error analyzing MongoDB collection structure: {}", e.getMessage());
+        }
+        
+        return columns;
+    }
+    
+    /**
+     * Recursively analyze document fields to extract column information
+     */
+    private void analyzeDocumentFields(org.bson.Document doc, String prefix, List<ColumnInfo> columns) {
+        for (String key : doc.keySet()) {
+            Object value = doc.get(key);
+            String fieldName = prefix.isEmpty() ? key : prefix + "." + key;
+            
+            String dataType = getMongoDBDataType(value);
+            String comment = "MongoDB field";
+            
+            ColumnInfo columnInfo = new ColumnInfo(
+                fieldName, dataType, 0, true, null, comment
+            );
+            columns.add(columnInfo);
+            
+            // Recursively analyze nested documents
+            if (value instanceof org.bson.Document) {
+                analyzeDocumentFields((org.bson.Document) value, fieldName, columns);
+            }
+        }
+    }
+    
+    /**
+     * Get MongoDB data type from value
+     */
+    private String getMongoDBDataType(Object value) {
+        if (value == null) return "null";
+        if (value instanceof String) return "String";
+        if (value instanceof Integer) return "Int32";
+        if (value instanceof Long) return "Int64";
+        if (value instanceof Double) return "Double";
+        if (value instanceof Boolean) return "Boolean";
+        if (value instanceof org.bson.Document) return "Document";
+        if (value instanceof java.util.List) return "Array";
+        if (value instanceof org.bson.types.ObjectId) return "ObjectId";
+        if (value instanceof java.util.Date) return "Date";
+        return value.getClass().getSimpleName();
+    }
+    
+    /**
+     * Add common MongoDB fields that are typically present
+     */
+    private void addCommonMongoDBFields(List<ColumnInfo> columns) {
+        String[] commonFields = {"_id", "createdAt", "updatedAt", "deletedAt", "version"};
+        String[] commonTypes = {"ObjectId", "Date", "Date", "Date", "Int32"};
+        
+        for (int i = 0; i < commonFields.length; i++) {
+            final int index = i;
+            boolean exists = columns.stream().anyMatch(col -> col.getColumnName().equals(commonFields[index]));
+            if (!exists) {
+                ColumnInfo columnInfo = new ColumnInfo(
+                    commonFields[index], commonTypes[index], 0, true, null, "Common MongoDB field"
+                );
+                columns.add(columnInfo);
+            }
+        }
+    }
+    
+    /**
+     * Analyze MongoDB relationships based on common field patterns
+     */
+    private List<ForeignKeyInfo> analyzeMongoDBRelationships(com.mongodb.client.MongoCollection<org.bson.Document> collection, String collectionName) {
+        List<ForeignKeyInfo> foreignKeys = new ArrayList<>();
+        
+        try {
+            // Look for common reference patterns in MongoDB
+            String[] referencePatterns = {"userId", "user_id", "customerId", "customer_id", "orderId", "order_id", 
+                                        "productId", "product_id", "categoryId", "category_id"};
+            
+            for (String pattern : referencePatterns) {
+                // Check if this collection has reference fields
+                org.bson.Document query = new org.bson.Document(pattern, new org.bson.Document("$exists", true));
+                long count = collection.countDocuments(query);
+                
+                if (count > 0) {
+                    // This suggests a relationship to another collection
+                    String targetCollection = pattern.replace("Id", "").replace("_id", "") + "s";
+                    if (targetCollection.endsWith("s")) {
+                        targetCollection = targetCollection.substring(0, targetCollection.length() - 1) + "s";
+                    }
+                    
+                    ForeignKeyInfo fkInfo = new ForeignKeyInfo(pattern, targetCollection, "_id");
+                    foreignKeys.add(fkInfo);
+                }
+            }
+            
+        } catch (Exception e) {
+            logger.warn("Error analyzing MongoDB relationships: {}", e.getMessage());
+        }
+        
+        return foreignKeys;
+    }
+    
+    /**
+     * Build MongoDB connection string from UserDatabaseConnection
+     */
+    private String buildMongoDBConnectionString(UserDatabaseConnection dbConnection) {
+        StringBuilder connectionString = new StringBuilder();
+        connectionString.append("mongodb://");
+        
+        if (dbConnection.getUsername() != null && !dbConnection.getUsername().isEmpty()) {
+            connectionString.append(dbConnection.getUsername());
+            if (dbConnection.getPassword() != null && !dbConnection.getPassword().isEmpty()) {
+                connectionString.append(":").append(dbConnection.getPassword());
+            }
+            connectionString.append("@");
+        }
+        
+        connectionString.append(dbConnection.getHost())
+                       .append(":")
+                       .append(dbConnection.getPort());
+        
+        // Add additional properties
+        if (dbConnection.getAdditionalProperties() != null && !dbConnection.getAdditionalProperties().isEmpty()) {
+            connectionString.append("/?");
+            dbConnection.getAdditionalProperties().forEach((key, value) -> 
+                connectionString.append(key).append("=").append(value).append("&"));
+            connectionString.setLength(connectionString.length() - 1); // Remove last &
+        }
+        
+        return connectionString.toString();
     }
     
     /**
@@ -696,19 +1034,22 @@ public class DatabaseSchemaAgent {
         private final long totalSchemasAnalyzed;
         private final long totalTablesProcessed;
         private final long totalEmbeddingsGenerated;
+        private final long totalRelationshipsStored;
         private final boolean qdrantConnected;
         
         public SchemaAgentStats(long totalSchemasAnalyzed, long totalTablesProcessed, 
-                               long totalEmbeddingsGenerated, boolean qdrantConnected) {
+                               long totalEmbeddingsGenerated, long totalRelationshipsStored, boolean qdrantConnected) {
             this.totalSchemasAnalyzed = totalSchemasAnalyzed;
             this.totalTablesProcessed = totalTablesProcessed;
             this.totalEmbeddingsGenerated = totalEmbeddingsGenerated;
+            this.totalRelationshipsStored = totalRelationshipsStored;
             this.qdrantConnected = qdrantConnected;
         }
         
         public long getTotalSchemasAnalyzed() { return totalSchemasAnalyzed; }
         public long getTotalTablesProcessed() { return totalTablesProcessed; }
         public long getTotalEmbeddingsGenerated() { return totalEmbeddingsGenerated; }
+        public long getTotalRelationshipsStored() { return totalRelationshipsStored; }
         public boolean isQdrantConnected() { return qdrantConnected; }
     }
 }

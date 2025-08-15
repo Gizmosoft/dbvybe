@@ -1,20 +1,61 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Database, Eye, EyeOff, Mail, Lock } from 'lucide-react';
 
 const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
-    email: '',
+    username: '',
     password: ''
   });
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Check if user is already logged in
+  useEffect(() => {
+    const userData = localStorage.getItem('user');
+    if (userData) {
+      // If user is already logged in, redirect to dashboard
+      navigate('/dashboard');
+    }
+  }, [navigate]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulate login - in real app this would call an API
-    console.log('Login attempt:', formData);
-    navigate('/dashboard');
+    
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: formData.username,
+          password: formData.password,
+          action: 'LOGIN'
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        console.log('Login successful:', data);
+        // Store user data in localStorage
+        localStorage.setItem('user', JSON.stringify({
+          userId: data.userId,
+          username: data.username,
+          email: data.email,
+          role: data.role,
+          sessionId: data.sessionId
+        }));
+        navigate('/dashboard');
+      } else {
+        console.error('Login failed:', data);
+        alert(data.message || 'Login failed');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      alert('Login failed. Please try again.');
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -66,8 +107,8 @@ const LoginPage = () => {
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="email" className="form-label">
-              Email address
+            <label htmlFor="username" className="form-label">
+              Username
             </label>
             <div style={{ position: 'relative' }}>
               <Mail size={20} style={{ 
@@ -78,14 +119,14 @@ const LoginPage = () => {
                 color: 'var(--neutral-gray)'
               }} />
               <input
-                type="email"
-                id="email"
-                name="email"
-                value={formData.email}
+                type="text"
+                id="username"
+                name="username"
+                value={formData.username}
                 onChange={handleChange}
                 className="form-input"
                 style={{ paddingLeft: '44px' }}
-                placeholder="Enter your email"
+                placeholder="Enter your username"
                 required
               />
             </div>
@@ -133,24 +174,7 @@ const LoginPage = () => {
             </div>
           </div>
 
-          <div style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            marginBottom: '24px'
-          }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input type="checkbox" style={{ width: '16px', height: '16px' }} />
-              <span style={{ fontSize: 'var(--font-size-sm)' }}>Remember me</span>
-            </label>
-            <Link to="/forgot-password" style={{ 
-              fontSize: 'var(--font-size-sm)',
-              color: 'var(--primary-purple)',
-              textDecoration: 'none'
-            }}>
-              Forgot password?
-            </Link>
-          </div>
+
 
           <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
             Sign in
@@ -175,24 +199,7 @@ const LoginPage = () => {
           </p>
         </div>
 
-        {/* Demo credentials */}
-        <div style={{ 
-          marginTop: '24px',
-          padding: '16px',
-          background: 'var(--neutral-light-gray)',
-          borderRadius: 'var(--border-radius-lg)',
-          fontSize: 'var(--font-size-sm)'
-        }}>
-          <p style={{ marginBottom: '8px', fontWeight: 'var(--font-weight-medium)' }}>
-            Demo credentials:
-          </p>
-          <p style={{ marginBottom: '4px' }}>
-            <strong>Email:</strong> demo@dbvybe.com
-          </p>
-          <p>
-            <strong>Password:</strong> demo123
-          </p>
-        </div>
+
       </div>
     </div>
   );

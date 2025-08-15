@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { 
   Database, 
@@ -8,13 +8,55 @@ import {
   BarChart3, 
   MessageSquare,
   ArrowRight,
-  Play
+  Play,
+  LogOut
 } from 'lucide-react';
 
 const HomePage = () => {
   const [currentHeadlineIndex, setCurrentHeadlineIndex] = useState(0);
   const [currentText, setCurrentText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const navigate = useNavigate();
+
+  // Check if user is logged in
+  useEffect(() => {
+    const userData = localStorage.getItem('user');
+    if (userData) {
+      setUser(JSON.parse(userData));
+    }
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      
+      // Call logout API
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sessionId: userData.sessionId,
+          action: 'LOGOUT'
+        }),
+      });
+
+      // Clear localStorage regardless of API response
+      localStorage.removeItem('user');
+      sessionStorage.clear();
+      
+      // Reload the page to update the UI
+      window.location.reload();
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Still clear storage and reload even if API fails
+      localStorage.removeItem('user');
+      sessionStorage.clear();
+      window.location.reload();
+    }
+  };
 
   const headlines = [
     "Explore Your Database with Natural Language",
@@ -72,10 +114,29 @@ const HomePage = () => {
           </Link>
           <ul className="nav-menu">
             <li><Link to="/" className="nav-menu-item">Home</Link></li>
-            <li><Link to="/dashboard" className="nav-menu-item">Dashboard</Link></li>
-            <li><Link to="/explore" className="nav-menu-item">Explore</Link></li>
-            <li><Link to="/login" className="nav-menu-item">Login</Link></li>
-            <li><Link to="/signup" className="btn btn-primary">Get Started</Link></li>
+            {user && <li><Link to="/dashboard" className="nav-menu-item">Dashboard</Link></li>}
+            {user ? (
+              <li>
+                <button 
+                  onClick={handleLogout}
+                  className="btn btn-ghost"
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px',
+                    color: 'var(--semantic-error)'
+                  }}
+                >
+                  <LogOut size={16} />
+                  Logout
+                </button>
+              </li>
+            ) : (
+              <>
+                <li><Link to="/login" className="nav-menu-item">Login</Link></li>
+                <li><Link to="/signup" className="btn btn-primary">Get Started</Link></li>
+              </>
+            )}
           </ul>
         </div>
       </nav>
@@ -107,13 +168,13 @@ const HomePage = () => {
           </p>
           <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
             <Link to="/signup" className="btn btn-primary">
-              Start Free Trial
+              Get Started
               <ArrowRight size={20} />
             </Link>
-            <button className="btn btn-secondary">
+            {/* <button className="btn btn-secondary">
               <Play size={20} />
               Watch Demo
-            </button>
+            </button> */}
           </div>
         </div>
       </section>
@@ -282,7 +343,7 @@ const HomePage = () => {
               Join thousands of teams using dbVybe to unlock the full potential of their data
             </p>
             <Link to="/signup" className="btn btn-secondary" style={{ background: 'white', color: 'var(--primary-purple)' }}>
-              Start Your Free Trial
+              Get Started
               <ArrowRight size={20} />
             </Link>
           </div>

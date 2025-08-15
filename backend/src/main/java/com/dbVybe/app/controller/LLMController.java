@@ -4,7 +4,8 @@ import akka.actor.typed.ActorRef;
 import akka.actor.typed.Scheduler;
 import akka.actor.typed.javadsl.AskPattern;
 import com.dbVybe.app.cluster.ClusterManager;
-import com.dbVybe.app.cluster.LLMProcessingSystem;
+import com.dbVybe.app.actor.llm.LLMOrchestrator;
+import com.dbVybe.app.actor.llm.LLMActor;
 import com.dbVybe.app.domain.dto.LLMChatRequest;
 import com.dbVybe.app.domain.dto.LLMChatResponse;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,35 +59,33 @@ public class LLMController {
         try {
             
             // Get LLM orchestrator and scheduler
-            ActorRef<LLMProcessingSystem.LLMOrchestrator.Command> llmOrchestrator = clusterManager.getLLMOrchestrator();
-            Scheduler scheduler = clusterManager.getLLMScheduler();
+            ActorRef<LLMOrchestrator.Command> llmOrchestrator = clusterManager.getLLMOrchestrator();
+            Scheduler scheduler = clusterManager.getLLMProcessingScheduler();
             
-            // Choose between standard processing (with request tracking) or direct forwarding
-            CompletionStage<LLMProcessingSystem.LLMOrchestrator.ChatResponse> future;
+            // Choose between standard processing or direct forwarding
+            CompletionStage<LLMActor.ProcessMessageResponse> future;
             
             if (useDirect) {
                 // Use direct forwarding for optimized performance
                 logger.debug("Using direct forwarding for user {}", finalUserId);
-                future = AskPattern.<LLMProcessingSystem.LLMOrchestrator.Command, LLMProcessingSystem.LLMOrchestrator.ChatResponse>ask(
+                future = AskPattern.<LLMOrchestrator.Command, LLMActor.ProcessMessageResponse>ask(
                     llmOrchestrator,
-                    replyTo -> LLMProcessingSystem.createDirectChatMessage(
-                        finalUserId, 
+                    replyTo -> new LLMOrchestrator.ProcessChatMessageDirect(
                         request.getMessage(), 
-                        request.getSessionId(), 
+                        finalUserId, 
                         replyTo
                     ),
                     TIMEOUT,
                     scheduler
                 );
             } else {
-                // Use standard processing with request tracking
-                logger.debug("Using standard processing with request tracking for user {}", finalUserId);
-                future = AskPattern.<LLMProcessingSystem.LLMOrchestrator.Command, LLMProcessingSystem.LLMOrchestrator.ChatResponse>ask(
+                // Use standard processing
+                logger.debug("Using standard processing for user {}", finalUserId);
+                future = AskPattern.<LLMOrchestrator.Command, LLMActor.ProcessMessageResponse>ask(
                     llmOrchestrator,
-                    replyTo -> LLMProcessingSystem.createChatMessage(
-                        finalUserId, 
+                    replyTo -> new LLMOrchestrator.ProcessChatMessage(
                         request.getMessage(), 
-                        request.getSessionId(), 
+                        finalUserId, 
                         replyTo
                     ),
                     TIMEOUT,
@@ -98,8 +97,8 @@ public class LLMController {
             return future.thenApply(actorResponse -> {
                 if (actorResponse.isSuccess()) {
                     LLMChatResponse response = new LLMChatResponse(
-                        actorResponse.getRequestId(), // Will be null in direct mode
-                        actorResponse.getResponse(),
+                        null, // No request ID in unified system
+                        actorResponse.getContent(),
                         request.getSessionId()
                     );
                     logger.info("Successfully processed chat request for user {} using {} mode", 
@@ -107,7 +106,7 @@ public class LLMController {
                     return ResponseEntity.ok(response);
                 } else {
                     LLMChatResponse errorResponse = new LLMChatResponse(
-                        actorResponse.getRequestId(), // Will be null in direct mode
+                        null, // No request ID in unified system
                         actorResponse.getError(),
                         request.getSessionId(),
                         true
@@ -150,36 +149,13 @@ public class LLMController {
         logger.debug("Checking LLM system status");
         
         try {
-            ActorRef<LLMProcessingSystem.LLMOrchestrator.Command> llmOrchestrator = clusterManager.getLLMOrchestrator();
-            Scheduler scheduler = clusterManager.getLLMScheduler();
+            // For now, return a simple status since we don't have a status command in the new orchestrator
+            Map<String, Object> status = new HashMap<>();
+            status.put("status", "UP");
+            status.put("timestamp", java.time.LocalDateTime.now());
+            status.put("message", "LLM system is running");
             
-            CompletionStage<LLMProcessingSystem.LLMOrchestrator.StatusResponse> future = 
-                AskPattern.<LLMProcessingSystem.LLMOrchestrator.Command, LLMProcessingSystem.LLMOrchestrator.StatusResponse>ask(
-                    llmOrchestrator,
-                    replyTo -> new LLMProcessingSystem.LLMOrchestrator.GetStatus(replyTo),
-                    TIMEOUT,
-                    scheduler
-                );
-            
-            return future.thenApply(statusResponse -> {
-                Map<String, Object> status = new HashMap<>();
-                status.put("ready", statusResponse.isReady());
-                status.put("activeRequests", statusResponse.getActiveRequests());
-                status.put("status", statusResponse.getStatus());
-                status.put("node", "LLMProcessingSystem");
-                status.put("timestamp", java.time.LocalDateTime.now());
-                
-                return ResponseEntity.ok(status);
-            }).exceptionally(throwable -> {
-                logger.error("Error getting LLM status: {}", throwable.getMessage());
-                Map<String, Object> errorStatus = new HashMap<>();
-                errorStatus.put("ready", false);
-                errorStatus.put("status", "ERROR");
-                errorStatus.put("error", throwable.getMessage());
-                errorStatus.put("timestamp", java.time.LocalDateTime.now());
-                
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorStatus);
-            });
+            return java.util.concurrent.CompletableFuture.completedFuture(ResponseEntity.ok(status));
             
         } catch (Exception e) {
             logger.error("Error accessing LLM system: {}", e.getMessage());

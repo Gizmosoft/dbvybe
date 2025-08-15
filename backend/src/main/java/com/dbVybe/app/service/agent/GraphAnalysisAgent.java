@@ -6,6 +6,7 @@ import org.neo4j.driver.types.Node;
 import org.neo4j.driver.types.Path;
 import org.neo4j.driver.types.Relationship;
 import org.neo4j.driver.Record;
+import org.neo4j.driver.TransactionContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -107,11 +108,11 @@ public class GraphAnalysisAgent {
                     return session.executeWrite(tx -> {
                         try {
                             // Create or update database node
-                            createDatabaseNode((Transaction) tx, connectionId, userId, databaseType);
+                            createDatabaseNode(tx, connectionId, userId, databaseType);
                             
                             // Store table relationships
                             for (TableRelationship relationship : relationships) {
-                                storeTableRelationship((Transaction) tx, connectionId, relationship);
+                                storeTableRelationship(tx, connectionId, relationship);
                             }
                             
                             totalRelationshipsStored += relationships.size();
@@ -375,7 +376,7 @@ public class GraphAnalysisAgent {
         }
     }
     
-    private void createDatabaseNode(Transaction tx, String connectionId, String userId, DatabaseType databaseType) {
+    private void createDatabaseNode(TransactionContext tx, String connectionId, String userId, DatabaseType databaseType) {
         String cypher = """
             MERGE (db:Database {connectionId: $connectionId})
             SET db.userId = $userId,
@@ -390,7 +391,7 @@ public class GraphAnalysisAgent {
         ));
     }
     
-    private void storeTableRelationship(Transaction tx, String connectionId, TableRelationship relationship) {
+    private void storeTableRelationship(TransactionContext tx, String connectionId, TableRelationship relationship) {
         // Create table nodes
         String createTablesCypher = """
             MATCH (db:Database {connectionId: $connectionId})

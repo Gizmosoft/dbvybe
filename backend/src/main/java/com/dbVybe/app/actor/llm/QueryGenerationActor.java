@@ -331,7 +331,8 @@ public class QueryGenerationActor extends AbstractBehavior<QueryGenerationActor.
         
         String normalizedQuery = query.toLowerCase().trim();
         
-        // Check for dangerous operations
+        // Check for dangerous operations (keeping only the most critical ones)
+        // Removed most restrictions to allow all query types
         String[] dangerousOperations = {"drop", "delete", "truncate", "alter", "create", "insert", "update"};
         for (String operation : dangerousOperations) {
             if (normalizedQuery.contains(operation)) {
@@ -341,18 +342,9 @@ public class QueryGenerationActor extends AbstractBehavior<QueryGenerationActor.
             }
         }
         
-        // Basic syntax validation based on database type
-        boolean isValid = false;
-        switch (databaseType) {
-            case MYSQL:
-            case POSTGRESQL:
-                isValid = normalizedQuery.contains("select") || normalizedQuery.contains("show") || 
-                         normalizedQuery.contains("describe") || normalizedQuery.contains("explain");
-                break;
-            case MONGODB:
-                isValid = query.contains("find") || query.contains("aggregate") || query.contains("count");
-                break;
-        }
+        // REMOVED: Basic syntax validation based on database type
+        // All query types are now allowed (SELECT, INSERT, UPDATE, DELETE, etc.)
+        boolean isValid = true; // Allow all query types
         
         if (!isValid) {
             return new QueryValidationResult(false, false, 

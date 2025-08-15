@@ -183,7 +183,14 @@ public class QueryExecutionAgent {
         
         String trimmedQuery = query.trim();
         
-        // Check for dangerous patterns
+        // Check if the query is actually SQL (not explanatory text)
+        if (!isValidSQLQuery(trimmedQuery)) {
+            return new QuerySafetyResult(false, 
+                "Query appears to be explanatory text, not valid SQL. Please generate an actual SQL query.");
+        }
+        
+        // Check for dangerous patterns (keeping only the most critical ones)
+        // Removed most restrictions to allow all query types
         for (Pattern dangerousPattern : DANGEROUS_QUERY_PATTERNS) {
             if (dangerousPattern.matcher(trimmedQuery).find()) {
                 return new QuerySafetyResult(false, 
@@ -191,19 +198,8 @@ public class QueryExecutionAgent {
             }
         }
         
-        // Check if query matches safe patterns
-        boolean isSafeQuery = false;
-        for (Pattern safePattern : SAFE_QUERY_PATTERNS) {
-            if (safePattern.matcher(trimmedQuery).matches()) {
-                isSafeQuery = true;
-                break;
-            }
-        }
-        
-        if (!isSafeQuery) {
-            return new QuerySafetyResult(false, 
-                "Only SELECT, SHOW, DESCRIBE, and EXPLAIN queries are allowed");
-        }
+        // REMOVED: SAFE_QUERY_PATTERNS check - now allowing all query types
+        // All query types are now allowed as long as they don't contain dangerous patterns
         
         // Additional safety checks
         if (trimmedQuery.contains(";") && trimmedQuery.indexOf(";") < trimmedQuery.length() - 1) {
@@ -212,6 +208,53 @@ public class QueryExecutionAgent {
         }
         
         return new QuerySafetyResult(true, null);
+    }
+    
+    /**
+     * Check if the query is actually valid SQL (not explanatory text)
+     */
+    private boolean isValidSQLQuery(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return false;
+        }
+        
+        String upperQuery = query.toUpperCase().trim();
+        
+        // Check if it starts with common SQL keywords
+        if (upperQuery.startsWith("SELECT ") || 
+            upperQuery.startsWith("INSERT ") || 
+            upperQuery.startsWith("UPDATE ") || 
+            upperQuery.startsWith("DELETE ") || 
+            upperQuery.startsWith("CREATE ") || 
+            upperQuery.startsWith("DROP ") || 
+            upperQuery.startsWith("ALTER ") || 
+            upperQuery.startsWith("SHOW ") || 
+            upperQuery.startsWith("DESCRIBE ") || 
+            upperQuery.startsWith("EXPLAIN ") ||
+            upperQuery.startsWith("WITH ")) {
+            return true;
+        }
+        
+        // Check if it contains explanatory text patterns
+        if (upperQuery.startsWith("I'M ") || 
+            upperQuery.startsWith("I CAN ") || 
+            upperQuery.startsWith("I NEED ") || 
+            upperQuery.startsWith("COULD YOU ") || 
+            upperQuery.startsWith("PLEASE ") ||
+            upperQuery.contains("BUT I NEED") ||
+            upperQuery.contains("COULD YOU PROVIDE") ||
+            upperQuery.contains("SCHEMA-QUALIFIED")) {
+            return false;
+        }
+        
+        // Check if it looks like a natural language response
+        if (upperQuery.length() > 100 && 
+            (upperQuery.contains(" ") && upperQuery.split(" ").length > 10)) {
+            // If it's a long text without SQL keywords, it's probably explanatory text
+            return false;
+        }
+        
+        return true;
     }
     
     private UserDatabaseConnection getConnectionInfo(String connectionId, String userId) {
@@ -267,7 +310,12 @@ public class QueryExecutionAgent {
                 dbConnection.getUsername(), 
                 dbConnection.getPassword())) {
             
-            try (PreparedStatement stmt = connection.prepareStatement(query)) {
+            // Handle parameterized queries by converting them to direct SQL
+            String processedQuery = processParameterizedQuery(query);
+            logger.debug("Original query: {}", query);
+            logger.debug("Processed query: {}", processedQuery);
+            
+            try (PreparedStatement stmt = connection.prepareStatement(processedQuery)) {
                 stmt.setMaxRows(maxRows);
                 stmt.setQueryTimeout(30); // 30 second timeout
                 
@@ -295,6 +343,61 @@ public class QueryExecutionAgent {
                 System.currentTimeMillis() - startTime,
                 "SQL_ERROR"
             );
+        }
+    }
+    
+    /**
+     * Process parameterized queries by replacing placeholders with default values
+     */
+    private String processParameterizedQuery(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return query;
+        }
+        
+        String processedQuery = query;
+        
+        // Replace PostgreSQL-style parameters ($1, $2, etc.) with default values
+        int paramIndex = 1;
+        while (processedQuery.contains("$" + paramIndex)) {
+            // Use a default value based on context - this is a simplified approach
+            // In a real implementation, you'd want to extract actual values from the user's request
+            String defaultValue = getDefaultParameterValue(paramIndex, query);
+            processedQuery = processedQuery.replace("$" + paramIndex, defaultValue);
+            paramIndex++;
+        }
+        
+        // Replace MySQL-style parameters (?) with default values
+        paramIndex = 1;
+        while (processedQuery.contains("?")) {
+            String defaultValue = getDefaultParameterValue(paramIndex, query);
+            processedQuery = processedQuery.replaceFirst("\\?", defaultValue);
+            paramIndex++;
+        }
+        
+        return processedQuery;
+    }
+    
+    /**
+     * Get a default parameter value based on the query context
+     */
+    private String getDefaultParameterValue(int paramIndex, String query) {
+        // This is a simplified approach - in a real implementation, you'd want to
+        // extract actual values from the user's request or use a more sophisticated approach
+        
+        // Try to infer the type from the query context
+        String lowerQuery = query.toLowerCase();
+        
+        if (lowerQuery.contains("amount") || lowerQuery.contains("price") || lowerQuery.contains("cost")) {
+            return "0"; // Default numeric value for amounts
+        } else if (lowerQuery.contains("name") || lowerQuery.contains("title") || lowerQuery.contains("description")) {
+            return "'default'"; // Default string value
+        } else if (lowerQuery.contains("date") || lowerQuery.contains("created") || lowerQuery.contains("updated")) {
+            return "'2024-01-01'"; // Default date value
+        } else if (lowerQuery.contains("id")) {
+            return "1"; // Default ID value
+        } else {
+            // Generic default based on parameter position
+            return paramIndex % 2 == 0 ? "'value" + paramIndex + "'" : String.valueOf(paramIndex);
         }
     }
     

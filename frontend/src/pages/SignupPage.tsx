@@ -6,20 +6,45 @@ const SignupPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
+    username: '',
     email: '',
     password: '',
-    confirmPassword: '',
-    acceptTerms: false
+    confirmPassword: ''
   });
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulate signup - in real app this would call an API
-    console.log('Signup attempt:', formData);
-    navigate('/dashboard');
+    
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: formData.username,
+          email: formData.email,
+          password: formData.password,
+          action: 'REGISTER'
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        console.log('Registration successful:', data);
+        alert('Registration successful! Please login with your credentials.');
+        navigate('/login');
+      } else {
+        console.error('Registration failed:', data);
+        // Handle error - you might want to show an error message to the user
+        alert(data.message || 'Registration failed');
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      alert('Registration failed. Please try again.');
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -32,8 +57,8 @@ const SignupPage = () => {
 
   const isPasswordValid = formData.password.length >= 8;
   const isPasswordMatch = formData.password === formData.confirmPassword;
-  const isFormValid = formData.firstName && formData.lastName && formData.email && 
-                     isPasswordValid && isPasswordMatch && formData.acceptTerms;
+  const isFormValid = formData.username && formData.email && 
+                     isPasswordValid && isPasswordMatch;
 
   return (
     <div className="min-h-screen" style={{ 
@@ -76,57 +101,29 @@ const SignupPage = () => {
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label htmlFor="firstName" className="form-label">
-                First name
-              </label>
-              <div style={{ position: 'relative' }}>
-                <User size={20} style={{ 
-                  position: 'absolute', 
-                  left: '12px', 
-                  top: '50%', 
-                  transform: 'translateY(-50%)',
-                  color: 'var(--neutral-gray)'
-                }} />
-                <input
-                  type="text"
-                  id="firstName"
-                  name="firstName"
-                  value={formData.firstName}
-                  onChange={handleChange}
-                  className="form-input"
-                  style={{ paddingLeft: '44px' }}
-                  placeholder="First name"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label htmlFor="lastName" className="form-label">
-                Last name
-              </label>
-              <div style={{ position: 'relative' }}>
-                <User size={20} style={{ 
-                  position: 'absolute', 
-                  left: '12px', 
-                  top: '50%', 
-                  transform: 'translateY(-50%)',
-                  color: 'var(--neutral-gray)'
-                }} />
-                <input
-                  type="text"
-                  id="lastName"
-                  name="lastName"
-                  value={formData.lastName}
-                  onChange={handleChange}
-                  className="form-input"
-                  style={{ paddingLeft: '44px' }}
-                  placeholder="Last name"
-                  required
-                />
-              </div>
+          <div className="form-group">
+            <label htmlFor="username" className="form-label">
+              Username
+            </label>
+            <div style={{ position: 'relative' }}>
+              <User size={20} style={{ 
+                position: 'absolute', 
+                left: '12px', 
+                top: '50%', 
+                transform: 'translateY(-50%)',
+                color: 'var(--neutral-gray)'
+              }} />
+              <input
+                type="text"
+                id="username"
+                name="username"
+                value={formData.username}
+                onChange={handleChange}
+                className="form-input"
+                style={{ paddingLeft: '44px' }}
+                placeholder="Choose a username"
+                required
+              />
             </div>
           </div>
 
@@ -270,32 +267,6 @@ const SignupPage = () => {
                 )}
               </div>
             )}
-          </div>
-
-          <div style={{ marginBottom: '24px' }}>
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-              <input 
-                type="checkbox" 
-                name="acceptTerms"
-                checked={formData.acceptTerms}
-                onChange={handleChange}
-                style={{ 
-                  width: '16px', 
-                  height: '16px',
-                  marginTop: '2px'
-                }} 
-              />
-              <span style={{ fontSize: 'var(--font-size-sm)', lineHeight: 'var(--line-height-relaxed)' }}>
-                I agree to the{' '}
-                <Link to="/terms" style={{ color: 'var(--primary-purple)', textDecoration: 'none' }}>
-                  Terms of Service
-                </Link>
-                {' '}and{' '}
-                <Link to="/privacy" style={{ color: 'var(--primary-purple)', textDecoration: 'none' }}>
-                  Privacy Policy
-                </Link>
-              </span>
-            </label>
           </div>
 
           <button 

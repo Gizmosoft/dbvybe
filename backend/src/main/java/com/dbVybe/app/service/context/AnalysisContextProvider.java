@@ -65,7 +65,7 @@ public class AnalysisContextProvider implements ContextProvider {
                 
                 if (response.isSuccess()) {
                     // Convert to ContextProvider format
-                    List<TableContext> tableContexts = response.getTableContexts().stream()
+                    List<ContextProvider.TableContext> tableContexts = response.getTableContexts().stream()
                         .map(this::convertToTableContext)
                         .collect(Collectors.toList());
                     
@@ -154,7 +154,7 @@ public class AnalysisContextProvider implements ContextProvider {
                 
                 // Extract table names from vector context for graph analysis
                 List<String> relevantTables = vectorContext.getRelevantTables().stream()
-                    .map(TableContext::getTableName)
+                    .map(ContextProvider.TableContext::getTableName)
                     .collect(Collectors.toList());
                 
                 // Get graph context for relevant tables
@@ -235,11 +235,11 @@ public class AnalysisContextProvider implements ContextProvider {
     
     // Helper methods
     
-    private TableContext convertToTableContext(VectorAnalysisAgent.TableContext agentContext) {
+    private ContextProvider.TableContext convertToTableContext(VectorAnalysisAgent.TableContext agentContext) {
         List<String> columns = extractColumnsFromDescription(agentContext.getDescription());
         Map<String, String> columnTypes = extractColumnTypesFromDescription(agentContext.getDescription());
         
-        return new TableContext(
+        return new ContextProvider.TableContext(
             agentContext.getTableName(),
             agentContext.getDescription(),
             columns,
@@ -296,7 +296,7 @@ public class AnalysisContextProvider implements ContextProvider {
             // Sort tables by relevance score
             joinOrder = vectorContext.getRelevantTables().stream()
                 .sorted((a, b) -> Float.compare(b.getRelevanceScore(), a.getRelevanceScore()))
-                .map(TableContext::getTableName)
+                .map(ContextProvider.TableContext::getTableName)
                 .collect(Collectors.toList());
         }
         
@@ -316,7 +316,7 @@ public class AnalysisContextProvider implements ContextProvider {
         }
         
         if (vectorContext.isSuccess() && !vectorContext.getRelevantTables().isEmpty()) {
-            TableContext mostRelevant = vectorContext.getRelevantTables().get(0);
+            ContextProvider.TableContext mostRelevant = vectorContext.getRelevantTables().get(0);
             hints.put("primary_table", "Start with " + mostRelevant.getTableName() + " (relevance: " + 
                 String.format("%.2f", mostRelevant.getRelevanceScore()) + ")");
         }

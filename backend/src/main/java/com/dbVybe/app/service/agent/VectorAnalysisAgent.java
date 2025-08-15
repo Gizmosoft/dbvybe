@@ -61,13 +61,18 @@ public class VectorAnalysisAgent {
             
             // Initialize Qdrant client
             if (qdrantApiKey != null && !qdrantApiKey.trim().isEmpty()) {
-                this.qdrantClient = new QdrantClient(
-                    QdrantGrpcClient.newBuilder(qdrantUrl, 6334, true)
-                        .withApiKey(qdrantApiKey)
-                        .build()
-                );
-                
-                logger.info("Vector Analysis Agent initialized with Qdrant connection");
+                try {
+                    this.qdrantClient = new QdrantClient(
+                        QdrantGrpcClient.newBuilder(qdrantUrl, 6334, true)
+                            .withApiKey(qdrantApiKey)
+                            .build()
+                    );
+                    
+                    logger.info("✅ Vector Analysis Agent initialized with Qdrant connection: {}", qdrantUrl);
+                } catch (Exception e) {
+                    logger.warn("⚠️ Failed to initialize Qdrant client: {}. Vector analysis will be limited.", e.getMessage());
+                    this.qdrantClient = null;
+                }
             } else {
                 logger.warn("Qdrant API key not configured. Vector analysis will be limited.");
             }

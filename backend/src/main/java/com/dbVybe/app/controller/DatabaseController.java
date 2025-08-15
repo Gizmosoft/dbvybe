@@ -8,6 +8,8 @@ import com.dbVybe.app.domain.dto.DatabaseConnectionRequest;
 import com.dbVybe.app.domain.dto.DatabaseConnectionResponse;
 import com.dbVybe.app.domain.model.UserDatabaseConnection;
 import com.dbVybe.app.cluster.ClusterManager;
+import com.dbVybe.app.service.DatabaseKnowledgeService;
+import com.dbVybe.app.service.UserDatabaseConnectionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -22,13 +24,18 @@ import java.util.concurrent.CompletionStage;
  */
 @RestController
 @RequestMapping("/api/database")
+@CrossOrigin(origins = "*", maxAge = 3600)
 public class DatabaseController {
     
     private final ClusterManager clusterManager;
+    private final DatabaseKnowledgeService knowledgeService;
+    private final UserDatabaseConnectionService connectionService;
     
     @Autowired
-    public DatabaseController(ClusterManager clusterManager) {
+    public DatabaseController(ClusterManager clusterManager, DatabaseKnowledgeService knowledgeService, UserDatabaseConnectionService connectionService) {
         this.clusterManager = clusterManager;
+        this.knowledgeService = knowledgeService;
+        this.connectionService = connectionService;
     }
     
     /**
@@ -52,6 +59,18 @@ public class DatabaseController {
             DatabaseConnectionResponse response = wrapper.getResponse();
             
             if (response.isSuccess()) {
+                // Store database knowledge when connection is successful
+                try {
+                    // Get the connection from the service using the connection ID
+                    var connectionOpt = connectionService.findUserDatabaseConnection(response.getConnectionId(), request.getUserId());
+                    if (connectionOpt.isPresent()) {
+                        knowledgeService.storeDatabaseKnowledge(connectionOpt.get());
+                    }
+                } catch (Exception e) {
+                    // Log error but don't fail the connection
+                    System.err.println("Failed to store database knowledge: " + e.getMessage());
+                }
+                
                 return ResponseEntity.status(HttpStatus.CREATED).body(response);
             } else {
                 String message = response.getMessage().toLowerCase();

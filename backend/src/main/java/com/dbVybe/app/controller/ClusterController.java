@@ -13,6 +13,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/cluster")
+@CrossOrigin(origins = "*", maxAge = 3600)
 public class ClusterController {
     
     private final ClusterManager clusterManager;

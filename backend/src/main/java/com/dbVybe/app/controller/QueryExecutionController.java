@@ -52,7 +52,7 @@ public class QueryExecutionController {
         
         try {
             ActorRef<QueryExecutorActor.Command> queryExecutorActor = clusterManager.getQueryExecutorActor();
-            Scheduler scheduler = clusterManager.getLLMProcessingScheduler();
+            Scheduler scheduler = clusterManager.getScheduler();
             
             CompletionStage<QueryExecutorActor.QueryExecutionResponse> future = 
                 AskPattern.<QueryExecutorActor.Command, QueryExecutorActor.QueryExecutionResponse>ask(
@@ -135,7 +135,7 @@ public class QueryExecutionController {
         
         try {
             ActorRef<QueryExecutorActor.Command> queryExecutorActor = clusterManager.getQueryExecutorActor();
-            Scheduler scheduler = clusterManager.getLLMProcessingScheduler();
+            Scheduler scheduler = clusterManager.getScheduler();
             
             CompletionStage<QueryExecutorActor.QueryValidationResponse> future = 
                 AskPattern.<QueryExecutorActor.Command, QueryExecutorActor.QueryValidationResponse>ask(
@@ -191,7 +191,7 @@ public class QueryExecutionController {
         
         try {
             ActorRef<QueryExecutorActor.Command> queryExecutorActor = clusterManager.getQueryExecutorActor();
-            Scheduler scheduler = clusterManager.getLLMProcessingScheduler();
+            Scheduler scheduler = clusterManager.getScheduler();
             
             CompletionStage<QueryExecutorActor.SupportedDatabasesResponse> future = 
                 AskPattern.<QueryExecutorActor.Command, QueryExecutorActor.SupportedDatabasesResponse>ask(
@@ -243,7 +243,7 @@ public class QueryExecutionController {
         
         try {
             ActorRef<QueryExecutorActor.Command> queryExecutorActor = clusterManager.getQueryExecutorActor();
-            Scheduler scheduler = clusterManager.getLLMProcessingScheduler();
+            Scheduler scheduler = clusterManager.getScheduler();
             
             CompletionStage<QueryExecutorActor.ExecutionStatsResponse> future = 
                 AskPattern.<QueryExecutorActor.Command, QueryExecutorActor.ExecutionStatsResponse>ask(

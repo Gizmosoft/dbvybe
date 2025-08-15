@@ -20,6 +20,7 @@ import java.util.concurrent.CompletionStage;
  */
 @RestController
 @RequestMapping("/api/sessions")
+@CrossOrigin(origins = "*", maxAge = 3600)
 public class UserSessionController {
     
     private final ClusterManager clusterManager;

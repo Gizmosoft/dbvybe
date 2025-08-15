@@ -70,19 +70,27 @@ public class SchemaAnalysisActor extends AbstractBehavior<SchemaAnalysisActor.Co
         private final String query;
         private final int limit;
         private final String userId;
+        private final String connectionId; // Add connectionId parameter
         private final ActorRef<SimilarSchemasResponse> replyTo;
         
         public SearchSimilarSchemas(String query, int limit, String userId, 
                                   ActorRef<SimilarSchemasResponse> replyTo) {
+            this(query, limit, userId, null, replyTo);
+        }
+        
+        public SearchSimilarSchemas(String query, int limit, String userId, String connectionId,
+                                  ActorRef<SimilarSchemasResponse> replyTo) {
             this.query = query;
             this.limit = limit;
             this.userId = userId;
+            this.connectionId = connectionId;
             this.replyTo = replyTo;
         }
         
         public String getQuery() { return query; }
         public int getLimit() { return limit; }
         public String getUserId() { return userId; }
+        public String getConnectionId() { return connectionId; }
         public ActorRef<SimilarSchemasResponse> getReplyTo() { return replyTo; }
     }
     
@@ -222,8 +230,11 @@ public class SchemaAnalysisActor extends AbstractBehavior<SchemaAnalysisActor.Co
                 
                 UserDatabaseConnection dbConnection = connectionOpt.get();
                 
-                // Create database connection
-                Connection connection = createDatabaseConnection(dbConnection);
+                // Create database connection based on database type
+                Connection connection = null;
+                if (command.getDatabaseType() != DatabaseType.MONGODB) {
+                    connection = createDatabaseConnection(dbConnection);
+                }
                 
                 try {
                     // Analyze schema using the agent
@@ -238,7 +249,7 @@ public class SchemaAnalysisActor extends AbstractBehavior<SchemaAnalysisActor.Co
                     return result;
                     
                 } finally {
-                    // Always close the connection
+                    // Always close the connection (only for SQL databases)
                     if (connection != null && !connection.isClosed()) {
                         connection.close();
                     }
@@ -323,7 +334,7 @@ public class SchemaAnalysisActor extends AbstractBehavior<SchemaAnalysisActor.Co
             command.getQuery(), command.getLimit(), command.getUserId());
         
         // Perform similarity search asynchronously
-        schemaAgent.findSimilarSchemas(command.getQuery(), command.getLimit())
+        schemaAgent.findSimilarSchemas(command.getQuery(), command.getLimit(), command.getConnectionId())
             .whenComplete((results, throwable) -> {
                 if (throwable != null) {
                     logger.error("Similar schema search failed for user {}: {}", 
