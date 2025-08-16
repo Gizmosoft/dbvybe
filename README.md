@@ -9,5 +9,6 @@ dbVybe is a **no-code, multi-agent database exploration tool** which allows you 
 `cd /backend/src/main/java/com/dbVybe/app`  
 Run the `DbVybeApplication.java` class to start the spring boot server which will also fire the Akka cluster nodes on different ports  
 - Start the frontend React+Vite app by:  
-`cd /frontend`  
+`cd /frontend`
+Run the command `npm install` to install all the dependencies
 Run the command `npm run dev` to start the Vite server
