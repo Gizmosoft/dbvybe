@@ -5,6 +5,7 @@ dbVybe is a **no-code, multi-agent database exploration tool** which allows you 
 ## Local Development Setup  
 
 - Clone the repository from `https://github.com/Gizmosoft/dbvybe.git`  
+- `cd /backend/src/main/resources` and create `application.properties` file based on the `application.properties.txt` file. Add the Qdrant and Neo4j API credentials and instance URIs
 - Start the backend server by:
   - `cd /backend/src/main/java/com/dbVybe/app`
   - Run the `DbVybeApplication.java` class to start the spring boot server which will also fire the Akka cluster nodes on different ports  
