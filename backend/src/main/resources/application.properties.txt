@@ -1,0 +1,147 @@
+# Application Properties
+spring.application.name=dbVybe
+server.port=8081
+spring.banner.location=classpath:banner.txt
+
+# Database Configuration (from docker-compose.yml)
+# MySQL Database Settings
+db.mysql.host=localhost
+db.mysql.port=3306
+db.mysql.database=dbvybe
+db.mysql.username=dbvybe_user
+db.mysql.password=dbvybe
+db.mysql.root.password=password
+
+# Database Connection Pool Settings
+db.mysql.connection-pool.initial-size=5
+db.mysql.connection-pool.max-size=20
+db.mysql.connection-pool.min-idle=5
+db.mysql.connection-pool.max-idle-time=300000
+
+# Database Health Check Settings
+db.mysql.healthcheck.timeout=20s
+db.mysql.healthcheck.retries=10
+
+# Docker Container Settings
+docker.mysql.container-name=dbvybe-mysql
+docker.mysql.image=mysql:8.0
+docker.mysql.volume.name=mysql_data
+docker.mysql.volume.path=/var/lib/mysql
+
+# Network Settings
+docker.network.name=dbvybe-network
+docker.network.driver=bridge
+
+# Database URLs for different environments
+# Development (using Docker)
+db.mysql.url=jdbc:mysql://${db.mysql.host}:${db.mysql.port}/${db.mysql.database}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+
+# Production (external database)
+db.mysql.production-url=jdbc:mysql://${db.mysql.host}:${db.mysql.port}/${db.mysql.database}?useSSL=true&allowPublicKeyRetrieval=true&serverTimezone=UTC
+
+# Database Driver
+db.mysql.driver=com.mysql.cj.jdbc.Driver
+
+# Spring DataSource Configuration
+spring.datasource.url=${db.mysql.url}
+spring.datasource.username=${db.mysql.username}
+spring.datasource.password=${db.mysql.password}
+spring.datasource.driver-class-name=${db.mysql.driver}
+
+# JPA/Hibernate Settings
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQL8Dialect
+spring.jpa.properties.hibernate.format_sql=true
+
+# Connection Validation
+spring.datasource.hikari.connection-test-query=SELECT 1
+spring.datasource.hikari.validation-timeout=3000
+spring.datasource.hikari.leak-detection-threshold=60000
+
+# Startup Configuration
+spring.jpa.defer-datasource-initialization=true
+spring.sql.init.mode=always
+
+# Logging for Database Operations
+logging.level.org.hibernate.SQL=DEBUG
+logging.level.org.hibernate.type.descriptor.sql.BasicBinder=TRACE
+logging.level.com.dbVybe.app.actor.database=DEBUG
+logging.level.com.dbVybe.app.actor.session=DEBUG
+logging.level.com.dbVybe.app.actor.security=DEBUG
+
+# LLM Settings
+# Groq LLM Configuration
+llm.groq.api-key=${GROQ_API_KEY:groq-api-key-here}
+llm.groq.model=openai/gpt-oss-120b
+llm.groq.max-tokens=1000
+llm.groq.temperature=0.7
+llm.groq.timeout=30000
+
+# LLM System Prompt
+llm.groq.system-prompt=You are a helpful database assistant that enables users to explore, query, and analyze their connected database using natural language. Interpret the user's intent and, when needed, translate it into safe, optimized, read-only queries for the respective database, always verifying schema and column names with available tools before generating queries. Provide clear, concise answers and explain results in plain, easy-to-understand language, avoiding unnecessary jargon. When relevant, teach users about database concepts such as schema structure, relationships, and query logic. If a request is ambiguous, ask one short clarifying question before proceeding. Output should include a brief answer for generic questions or a respective query for an operational request. Never modify or delete data, and be equally useful to both technical and non-technical users.
+
+# WebFlux Configuration for LLM HTTP Client
+spring.webflux.multipart.max-in-memory-size=1MB
+spring.codec.max-in-memory-size=1MB
+
+# HTTP Client Configuration for LLM APIs
+http.client.connect-timeout=10000
+http.client.read-timeout=30000
+http.client.write-timeout=30000
+
+# LLM Logging Configuration
+logging.level.com.dbVybe.app.service.llm=INFO
+logging.level.com.dbVybe.app.actor.llm=INFO
+logging.level.com.dbVybe.app.cluster.LLMProcessingSystem=INFO
+logging.level.com.dbVybe.app.controller.LLMController=INFO
+
+# Akka Cluster Logging (for debugging cluster communication)
+logging.level.akka.cluster=INFO
+logging.level.akka.remote=WARN
+
+# LangChain4j AI Agent Configuration
+langchain4j.open-ai.api-key=${GROQ_API_KEY:groq-api-key-here}
+langchain4j.open-ai.base-url=https://api.groq.com/openai/v1
+langchain4j.open-ai.model-name=openai/gpt-oss-120b
+langchain4j.open-ai.max-tokens=1000
+langchain4j.open-ai.temperature=0.7
+langchain4j.open-ai.timeout=30s
+
+# AI Agent Logging Configuration
+logging.level.com.dbVybe.app.service.agent=INFO
+logging.level.com.dbVybe.app.actor.llm.QueryGenerationActor=INFO
+logging.level.dev.langchain4j=DEBUG
+
+# Qdrant Vector Database Configuration
+qdrant.url=${QDRANT_URL:qdrant-url-here}
+qdrant.api-key=${QDRANT_API_KEY:qdrant-api-key-here}
+qdrant.collection.name=dbvybe_schemas
+
+# Schema Analysis Configuration
+schema.analysis.enabled=true
+schema.analysis.auto-trigger=true
+schema.analysis.embedding-model=all-minilm-l6-v2
+
+# Schema Analysis Logging
+logging.level.com.dbVybe.app.actor.analysis=INFO
+logging.level.com.dbVybe.app.cluster.DataAnalysisSystem=INFO
+
+# Neo4j Graph Database Configuration (Cloud Instance)
+neo4j.uri=${NEO4J_URI:neo4j-uri-here}
+neo4j.username=${NEO4J_USERNAME:neo4j}
+neo4j.password=${NEO4J_PASSWORD:neo4j-password-here}
+neo4j.database=${NEO4J_DATABASE:neo4j}
+
+# Vector Analysis Configuration
+vector.analysis.enabled=true
+vector.analysis.max-results=50
+
+# Graph Analysis Configuration
+graph.analysis.enabled=true
+graph.analysis.max-depth=5
+
+# Advanced Analysis Logging
+logging.level.com.dbVybe.app.service.agent.VectorAnalysisAgent=INFO
+logging.level.com.dbVybe.app.service.agent.GraphAnalysisAgent=INFO
+
